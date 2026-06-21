@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block title %}URLs privadas dos juízes{% endblock %}
+{% block content %}
+<div class="page-head"><div><p class="eyebrow">Acesso aos resultados</p><h1>URLs privadas dos juízes</h1></div><a class="button secondary" href="{% url 'dashboard' %}">Voltar ao painel</a></div>
+<div class="alert"><strong>Cada URL é pessoal e fixa.</strong> Envie-a apenas ao respectivo juiz. O formulário aparece somente quando ele está alocado como chair na rodada vigente.</div>
+<div class="judge-link-list">
+{% for judge in judges %}
+  <section class="card judge-link-card">
+    <div><h2>{{ judge.name }}</h2><p>{{ judge.society|default:'Sem sociedade' }}</p></div>
+    <label>URL privada<input value="{{ judge.private_url }}" readonly></label>
+    <form method="post" action="{% url 'regenerate_judge_link' judge.id %}">{% csrf_token %}<button class="button secondary small">Gerar nova URL</button></form>
+  </section>
+{% empty %}<section class="card"><p>Não há juízes ativos.</p></section>{% endfor %}
+</div>
+{% endblock %}

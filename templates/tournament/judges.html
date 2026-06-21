@@ -5,7 +5,7 @@
   <div><p class="eyebrow">Adjudicação</p><h1>Alocação de juízes</h1><p class="lead">{{ round.name }}</p></div>
   <a class="button secondary" href="{% url 'manage_round' round.id %}">Voltar à rodada</a>
 </div>
-<div class="alert allocation-note"><strong>Os avisos não impedem a alocação.</strong> Revise duplicidades, impedimentos e sociedades antes de salvar.</div>
+<div class="alert allocation-note"><strong>Impedimentos e sociedades geram avisos, mas não bloqueiam.</strong> Um juiz já alocado fica indisponível nas demais salas.</div>
 <form method="post" id="judge-allocation-form">{% csrf_token %}
   <div class="allocation-layout">
     <aside class="allocation-sidebar">
@@ -13,8 +13,8 @@
         <h2>Visão geral</h2>
         <div class="allocation-stats">
           <div><strong id="count-unallocated">0</strong><span>não alocados</span></div>
-          <div><strong id="count-once">0</strong><span>alocados uma vez</span></div>
-          <div><strong id="count-duplicate">0</strong><span>duplicados</span></div>
+          <div><strong id="count-once">0</strong><span>alocados</span></div>
+          <div><strong id="count-total">0</strong><span>total</span></div>
         </div>
         <div id="judge-roster" class="judge-roster"></div>
       </section>
@@ -63,20 +63,32 @@
   function update() {
     const counts = Object.fromEntries(Object.keys(judges).map(id => [id, 0]));
     cards.forEach(card => selectedByRoom(card).forEach(id => counts[id]++));
+    cards.forEach(card => {
+      const own = selectedByRoom(card);
+      const selectedElsewhere = new Set();
+      cards.filter(other => other !== card).forEach(other => selectedByRoom(other).forEach(id => selectedElsewhere.add(id)));
+      const chair = card.querySelector("select");
+      [...chair.options].forEach(option => {
+        if (option.value) option.disabled = selectedElsewhere.has(option.value) || (own.has(option.value) && chair.value !== option.value);
+      });
+      card.querySelectorAll('input[type="checkbox"]').forEach(input => {
+        input.disabled = selectedElsewhere.has(input.value) || chair.value === input.value;
+      });
+    });
     roster.replaceChildren();
     Object.entries(judges).sort((a, b) => a[1].name.localeCompare(b[1].name, "pt-BR")).forEach(([id, judge]) => {
       const item = document.createElement("div");
       const count = counts[id];
-      item.className = `judge-roster-item ${count === 0 ? "is-free" : count === 1 ? "is-used" : "is-duplicate"}`;
+      item.className = `judge-roster-item ${count === 0 ? "is-free" : "is-used"}`;
       item.innerHTML = `<span><strong></strong><small></small></span><b></b>`;
       item.querySelector("strong").textContent = judge.name;
       item.querySelector("small").textContent = judge.society || "Sem sociedade";
-      item.querySelector("b").textContent = count === 0 ? "Livre" : `${count}x`;
+      item.querySelector("b").textContent = count === 0 ? "Livre" : "Alocado";
       roster.appendChild(item);
     });
     document.getElementById("count-unallocated").textContent = Object.values(counts).filter(value => value === 0).length;
     document.getElementById("count-once").textContent = Object.values(counts).filter(value => value === 1).length;
-    document.getElementById("count-duplicate").textContent = Object.values(counts).filter(value => value > 1).length;
+    document.getElementById("count-total").textContent = Object.keys(judges).length;
     cards.forEach(card => {
       const room = rooms[card.dataset.roomId];
       const warnings = card.querySelector(".room-live-warnings");
@@ -84,7 +96,6 @@
       selectedByRoom(card).forEach(id => {
         const judge = judges[id];
         if (!judge) return;
-        if (counts[id] > 1) warnings.appendChild(warning(`${judge.name} está alocado em ${counts[id]} salas.`, "duplicate"));
         const conflicted = room.debaters.filter(debater => judge.conflicts.includes(debater.id));
         if (conflicted.length) warnings.appendChild(warning(`${judge.name} tem impedimento com ${conflicted.map(d => d.name).join(", ")}.`, "conflict"));
         const sameSociety = judge.society_id ? room.debaters.filter(debater => debater.society_id === judge.society_id) : [];
@@ -97,7 +108,22 @@
       status.classList.toggle("warning", total > 0);
     });
   }
-  document.getElementById("judge-allocation-form").addEventListener("change", update);
+  document.getElementById("judge-allocation-form").addEventListener("change", event => {
+    const card = event.target.closest(".allocation-room");
+    if (event.target.tagName === "SELECT" && event.target.value) {
+      card.querySelectorAll('input[type="checkbox"]:checked').forEach(input => {
+        if (input.value === event.target.value) input.checked = false;
+      });
+    }
+    const selectedHere = selectedByRoom(card);
+    const duplicate = cards.some(other => other !== card && [...selectedByRoom(other)].some(id => selectedHere.has(id)));
+    const sameRoomDuplicate = event.target.value && card.querySelector("select").value === event.target.value && event.target.type === "checkbox";
+    if (duplicate || sameRoomDuplicate) {
+      if (event.target.tagName === "SELECT") event.target.value = "";
+      if (event.target.type === "checkbox") event.target.checked = false;
+    }
+    update();
+  });
   update();
 })();
 </script>

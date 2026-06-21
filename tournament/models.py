@@ -36,6 +36,7 @@ class Judge(models.Model):
     email = models.EmailField(blank=True, null=True, unique=True)
     society = models.ForeignKey(Society, blank=True, null=True, on_delete=models.SET_NULL)
     active = models.BooleanField(default=True)
+    private_token = models.CharField(max_length=64, unique=True, default=secrets.token_urlsafe)
 
     class Meta:
         ordering = ["name"]
@@ -98,7 +99,18 @@ class TemporaryPair(models.Model):
     position = models.CharField(max_length=2, choices=POSITIONS)
 
     class Meta:
-        ordering = ["room__ordinal", "id"]
+        ordering = [
+            "room__ordinal",
+            models.Case(
+                models.When(position="OG", then=0),
+                models.When(position="OO", then=1),
+                models.When(position="CG", then=2),
+                models.When(position="CO", then=3),
+                default=4,
+                output_field=models.IntegerField(),
+            ),
+            "id",
+        ]
         unique_together = [("room", "position")]
 
     def __str__(self):
@@ -164,17 +176,7 @@ class JudgeAllocation(models.Model):
     role = models.CharField(max_length=10, choices=ROLES)
 
     class Meta:
-        unique_together = [("room", "judge")]
-
-
-class BallotToken(models.Model):
-    round = models.ForeignKey(Round, related_name="ballot_tokens", on_delete=models.CASCADE)
-    room = models.ForeignKey(Room, related_name="ballot_tokens", on_delete=models.CASCADE)
-    token = models.CharField(max_length=64, unique=True, default=secrets.token_urlsafe)
-    created_at = models.DateTimeField(auto_now_add=True)
-    used_at = models.DateTimeField(blank=True, null=True)
-    submitted_by_name = models.CharField(max_length=200, blank=True)
-    submitted_by_email = models.EmailField(blank=True)
+        constraints = [models.UniqueConstraint(fields=["round", "judge"], name="unique_judge_per_round")]
 
 
 class DebaterPartnerConflict(models.Model):

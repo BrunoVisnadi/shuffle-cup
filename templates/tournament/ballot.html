@@ -1,5 +1,0 @@
-{% extends 'base.html' %}
-{% block content %}<div class="page-head"><div><p class="eyebrow">Ballot privado</p><h1>{{ room.round.name }} · {{ room.name }}</h1></div></div>
-<form method="post">{% csrf_token %}<section class="card"><label>Seu nome<input name="submitted_by_name" required></label><label>E-mail (opcional)<input type="email" name="submitted_by_email"></label></section>
-{% for pair in pairs %}<section class="card ballot-pair"><span class="position">{{ pair.position }}</span><h2>{{ pair.names }}</h2>{% if room.round.kind == 'prelim' %}{% for slot in pair.slots.all %}<label>{{ slot.display_name }}{% if slot.is_swing %} <span class="swing">SWING</span>{% endif %}<input type="number" step="0.01" name="score_{{ slot.id }}" required></label>{% endfor %}{% else %}<label class="select-pair"><input type="checkbox" name="selected" value="{{ pair.id }}"> {% if room.round.kind == 'open_semifinal' %}Avançar esta dupla{% else %}Dupla campeã{% endif %}</label>{% endif %}</section>{% endfor %}
-<button class="button orange-button">Enviar ballot</button></form>{% endblock %}

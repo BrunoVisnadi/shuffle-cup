@@ -1,7 +1,7 @@
 from django.contrib import admin
 
 from .models import (
-    BallotToken, BreakChoice, Debater, DebaterPartnerConflict, Judge,
+    BreakChoice, Debater, DebaterPartnerConflict, Judge,
     JudgeAllocation, JudgeDebaterConflict, PairResult, ParticipantSlot, Room,
     Round, SiteSettings, Society, SpeakerScore, SwingSlot, TemporaryPair,
 )
@@ -35,7 +35,6 @@ admin.site.register(ParticipantSlot)
 admin.site.register(SpeakerScore)
 admin.site.register(PairResult)
 admin.site.register(JudgeAllocation)
-admin.site.register(BallotToken)
 admin.site.register(DebaterPartnerConflict)
 admin.site.register(JudgeDebaterConflict)
 admin.site.register(BreakChoice)

@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+{% block title %}Área de {{ judge.name }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><p class="eyebrow">Área privada do juiz</p><h1>{{ judge.name }}</h1></div></div>
+{% if not room %}
+  <section class="card"><h2>Nenhuma sala disponível</h2><p>Você não está alocado como chair na rodada vigente.</p></section>
+{% else %}
+  <div class="alert"><strong>{{ room.round.name }} · {{ room.name }}</strong><br>Confira todas as notas antes de enviar o resultado.</div>
+  <form method="post" id="result-form">{% csrf_token %}
+  {% for pair in pairs %}
+    <section class="card ballot-pair result-pair" data-position="{{ pair.position }}">
+      <span class="position">{{ pair.position }}</span>
+      <div class="result-pair-head"><h2>{{ pair.names }}</h2>{% if room.round.kind == 'prelim' %}<span class="call-badge">Aguardando notas</span>{% endif %}</div>
+      {% if room.round.kind == 'prelim' %}
+        {% for slot in pair.slots.all %}<label>{{ slot.display_name }}{% if slot.is_swing %} <span class="swing">SWING</span>{% endif %}<input class="score-input" type="number" min="50" max="100" step="0.01" name="score_{{ slot.id }}" required></label>{% endfor %}
+        <p class="pair-total">Total: <strong>--</strong></p>
+      {% else %}
+        <label class="select-pair"><input type="checkbox" name="selected" value="{{ pair.id }}"> {% if room.round.kind == 'open_semifinal' %}Avançar esta dupla{% else %}Dupla campeã{% endif %}</label>
+      {% endif %}
+    </section>
+  {% endfor %}
+  <button class="button orange-button">Enviar resultado</button></form>
+{% endif %}
+{% if room and room.round.kind == 'prelim' %}
+<script>
+(() => {
+  const cards = [...document.querySelectorAll(".result-pair")];
+  const labels = ["1ª", "2ª", "3ª", "4ª"];
+  function updateCalls() {
+    const completed = [];
+    cards.forEach(card => {
+      const inputs = [...card.querySelectorAll(".score-input")];
+      const values = inputs.map(input => Number(input.value));
+      const valid = inputs.every((input, index) => input.value !== "" && values[index] >= 50 && values[index] <= 100);
+      inputs.forEach((input, index) => input.classList.toggle("score-invalid", input.value !== "" && (values[index] < 50 || values[index] > 100)));
+      const total = valid ? values.reduce((sum, value) => sum + value, 0) : null;
+      card.querySelector(".pair-total strong").textContent = total === null ? "--" : total.toFixed(2);
+      const badge = card.querySelector(".call-badge");
+      badge.className = "call-badge";
+      badge.textContent = "Aguardando notas";
+      if (total !== null) completed.push({card, total, badge});
+    });
+    if (completed.length !== cards.length) return;
+    completed.sort((a, b) => b.total - a.total);
+    completed.forEach((item, index) => {
+      const tied = completed.some((other, otherIndex) => otherIndex !== index && other.total === item.total);
+      item.badge.textContent = tied ? "Empate" : labels[index];
+      item.badge.classList.add(tied ? "call-tie" : `call-${index + 1}`);
+    });
+  }
+  document.getElementById("result-form").addEventListener("input", updateCalls);
+  updateCalls();
+})();
+</script>
+{% endif %}
+{% endblock %}

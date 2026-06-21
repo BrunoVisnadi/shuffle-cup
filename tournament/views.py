@@ -1,6 +1,6 @@
 import csv
 import io
-import json
+import secrets
 from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
@@ -10,12 +10,11 @@ from django.db import transaction
 from django.http import Http404, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
-from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from .forms import CSVUploadForm, JudgeAllocationForm
 from .models import (
-    BallotToken, BreakChoice, Debater, DebaterPartnerConflict, Judge,
+    BreakChoice, Debater, DebaterPartnerConflict, Judge,
     JudgeAllocation, JudgeDebaterConflict, PairResult, ParticipantSlot, Room,
     Round, SiteSettings, Society, SpeakerScore,
 )
@@ -186,7 +185,7 @@ def csv_import(request, kind):
 @login_required
 def manage_round(request, round_id):
     round_obj = get_object_or_404(Round, pk=round_id)
-    rooms = round_obj.rooms.prefetch_related("pairs__slots__debater__society", "pairs__slots__swing", "pairs__result", "ballot_tokens")
+    rooms = round_obj.rooms.prefetch_related("pairs__slots__debater__society", "pairs__slots__swing", "pairs__result")
     hard, warnings = draw_warnings(round_obj) if round_obj.rooms.exists() else ([], [])
     all_slots = ParticipantSlot.objects.filter(pair__round=round_obj).select_related("debater", "swing")
     return render(request, "tournament/manage_round.html", {"round": round_obj, "rooms": rooms, "hard": hard, "warnings": warnings, "all_slots": all_slots})
@@ -272,17 +271,28 @@ def allocate_judges(request, round_id):
     if request.method == "POST":
         submitted_forms = [(room, JudgeAllocationForm(request.POST, prefix=f"room-{room.id}")) for room in rooms]
         if all(form.is_valid() for room, form in submitted_forms):
-            with transaction.atomic():
-                for room, form in submitted_forms:
-                    room.judge_allocations.all().delete()
-                    chair = form.cleaned_data["chair"]
-                    if chair:
-                        JudgeAllocation.objects.create(round=round_obj, room=room, judge=chair, role="chair")
-                    for judge in form.cleaned_data["panels"]:
-                        if judge != chair:
+            seen = set()
+            duplicate = False
+            for room, form in submitted_forms:
+                selected = ([form.cleaned_data["chair"]] if form.cleaned_data["chair"] else []) + list(form.cleaned_data["panels"])
+                ids = [judge.id for judge in selected]
+                if len(ids) != len(set(ids)) or seen.intersection(ids):
+                    duplicate = True
+                    break
+                seen.update(ids)
+            if duplicate:
+                messages.error(request, "Um juiz não pode ser alocado mais de uma vez na mesma rodada.")
+            else:
+                with transaction.atomic():
+                    for room, form in submitted_forms:
+                        room.judge_allocations.all().delete()
+                        chair = form.cleaned_data["chair"]
+                        if chair:
+                            JudgeAllocation.objects.create(round=round_obj, room=room, judge=chair, role="chair")
+                        for judge in form.cleaned_data["panels"]:
                             JudgeAllocation.objects.create(round=round_obj, room=room, judge=judge, role="panel")
-            messages.success(request, "Alocações de juízes salvas.")
-            return redirect("allocate_judges", round_id=round_id)
+                messages.success(request, "Alocações de juízes salvas.")
+                return redirect("allocate_judges", round_id=round_id)
         messages.error(request, "Revise os campos de alocação.")
     forms = []
     room_data = {}
@@ -318,20 +328,39 @@ def allocate_judges(request, round_id):
 
 
 @login_required
+def judge_links(request):
+    judges = list(Judge.objects.filter(active=True).select_related("society"))
+    for judge in judges:
+        judge.private_url = request.build_absolute_uri(reverse("judge_portal", args=[judge.private_token]))
+    return render(request, "tournament/judge_links.html", {"judges": judges})
+
+
+@login_required
 @require_POST
-def create_ballot_token(request, room_id):
-    room = get_object_or_404(Room, pk=room_id)
-    token = BallotToken.objects.create(round=room.round, room=room)
-    messages.success(request, request.build_absolute_uri(reverse("ballot", args=[token.token])))
-    return redirect("manage_round", round_id=room.round_id)
+def regenerate_judge_link(request, judge_id):
+    judge = get_object_or_404(Judge, pk=judge_id)
+    judge.private_token = secrets.token_urlsafe()
+    judge.save(update_fields=["private_token"])
+    messages.success(request, f"Nova URL privada gerada para {judge.name}.")
+    return redirect("judge_links")
 
 
-def ballot(request, token):
-    ballot_token = get_object_or_404(BallotToken, token=token)
-    room = ballot_token.room
+def judge_portal(request, token):
+    judge = get_object_or_404(Judge, private_token=token, active=True)
+    current_round = _setting().current_round
+    allocation = None
+    if current_round:
+        allocation = JudgeAllocation.objects.filter(
+            round=current_round, judge=judge, role="chair",
+        ).select_related("room", "round").first()
+    room = allocation.room if allocation else None
+    if not room:
+        return render(request, "tournament/judge_portal.html", {"judge": judge, "room": None})
     pairs = room.pairs.prefetch_related("slots__debater", "slots__swing")
     if request.method == "POST":
         try:
+            if PairResult.objects.filter(room=room, confirmed=True).exists():
+                raise ValidationError("O resultado desta sala já foi confirmado.")
             if room.round.kind == Round.PRELIM:
                 values = {}
                 for pair in pairs:
@@ -340,14 +369,10 @@ def ballot(request, token):
                 submit_prelim(room, values)
             else:
                 submit_elimination(room, [int(value) for value in request.POST.getlist("selected")])
-            ballot_token.used_at = timezone.now()
-            ballot_token.submitted_by_name = request.POST.get("submitted_by_name", "")
-            ballot_token.submitted_by_email = request.POST.get("submitted_by_email", "")
-            ballot_token.save()
             return render(request, "tournament/ballot_thanks.html", {"room": room})
         except (ValidationError, InvalidOperation, KeyError, ValueError) as exc:
             messages.error(request, "; ".join(exc.messages) if isinstance(exc, ValidationError) else "Informe uma nota válida para cada participante.")
-    return render(request, "tournament/ballot.html", {"token": ballot_token, "room": room, "pairs": pairs})
+    return render(request, "tournament/judge_portal.html", {"judge": judge, "room": room, "pairs": pairs})
 
 
 @login_required

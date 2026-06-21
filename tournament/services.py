@@ -211,7 +211,10 @@ def submit_prelim(room, values):
     pairs = list(room.pairs.prefetch_related("slots"))
     totals = {}
     for pair in pairs:
-        totals[pair.id] = sum(Decimal(str(values[slot.id])) for slot in pair.slots.all())
+        scores = [Decimal(str(values[slot.id])) for slot in pair.slots.all()]
+        if any(score < 50 or score > 100 for score in scores):
+            raise ValidationError("As notas devem estar entre 50 e 100, inclusive.")
+        totals[pair.id] = sum(scores)
     if len(set(totals.values())) != 4:
         raise ValidationError("Os totais das duplas devem ser distintos; empates não são válidos.")
     ordered = sorted(totals, key=totals.get, reverse=True)

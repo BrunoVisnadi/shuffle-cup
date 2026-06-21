@@ -7,7 +7,7 @@ from django.urls import reverse
 
 from .models import (
     BreakChoice, Debater, DebaterPartnerConflict, Judge, JudgeAllocation,
-    JudgeDebaterConflict, PairResult, ParticipantSlot, Room, Round, Society,
+    JudgeDebaterConflict, PairResult, ParticipantSlot, Room, Round, SiteSettings, Society,
     SpeakerScore, TemporaryPair,
 )
 from .services import (
@@ -95,6 +95,23 @@ class ResultTests(TournamentTestCase):
         values = {slot.id: Decimal("75") for slot in ParticipantSlot.objects.filter(pair__room=self.room)}
         with self.assertRaises(ValidationError):
             submit_prelim(self.room, values)
+
+    def test_speaker_scores_must_be_between_50_and_100(self):
+        values = self.values_with_totals()
+        values[next(iter(values))] = Decimal("49.99")
+        with self.assertRaises(ValidationError):
+            submit_prelim(self.room, values)
+        values[next(iter(values))] = Decimal("100.01")
+        with self.assertRaises(ValidationError):
+            submit_prelim(self.room, values)
+
+    def test_boundary_speaker_scores_are_accepted(self):
+        values = self.values_with_totals()
+        slot_ids = list(values)
+        values[slot_ids[0]] = Decimal("50")
+        values[slot_ids[-1]] = Decimal("100")
+        submit_prelim(self.room, values)
+        self.assertTrue(PairResult.objects.filter(room=self.room, submitted=True).exists())
 
     def test_unconfirmed_results_do_not_affect_standings(self):
         submit_prelim(self.room, self.values_with_totals())
@@ -220,16 +237,72 @@ class JudgeAllocationTests(TournamentTestCase):
         self.assertContains(response, "Sociedade A")
         self.assertContains(response, "Juíza Teste")
         self.assertContains(response, str(self.debaters[0].id))
-        self.assertContains(response, "Os avisos não impedem a alocação")
+        self.assertContains(response, "Impedimentos e sociedades geram avisos, mas não bloqueiam")
 
-    def test_duplicate_and_conflicted_allocation_is_allowed(self):
+    def test_conflicted_allocation_is_allowed_but_duplicate_is_rejected(self):
         rooms = list(self.round.rooms.all())
         response = self.client.post(reverse("allocate_judges", args=[self.round.id]), {
             f"room-{rooms[0].id}-chair": self.judge.id,
             f"room-{rooms[1].id}-chair": self.judge.id,
         }, secure=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "não pode ser alocado mais de uma vez")
+        self.assertFalse(JudgeAllocation.objects.filter(judge=self.judge).exists())
+
+        response = self.client.post(reverse("allocate_judges", args=[self.round.id]), {
+            f"room-{rooms[0].id}-chair": self.judge.id,
+        }, secure=True)
         self.assertRedirects(response, reverse("allocate_judges", args=[self.round.id]), fetch_redirect_response=False)
-        self.assertEqual(JudgeAllocation.objects.filter(judge=self.judge).count(), 2)
+        self.assertEqual(JudgeAllocation.objects.filter(judge=self.judge).count(), 1)
+
+
+class JudgePortalTests(TournamentTestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="tab", password="secret")
+        self.debaters = self.make_debaters(8)
+        self.round = self.make_round()
+        generate_prelim_draw(self.round)
+        self.room = self.round.rooms.get()
+        self.judge = Judge.objects.create(name="Chair Teste")
+        JudgeAllocation.objects.create(round=self.round, room=self.room, judge=self.judge, role="chair")
+        setting = SiteSettings.load()
+        setting.current_round = self.round
+        setting.save()
+
+    def test_private_url_is_fixed_and_only_uses_current_chair_room(self):
+        url = reverse("judge_portal", args=[self.judge.private_token])
+        response = self.client.get(url, secure=True)
+        self.assertContains(response, self.room.name)
+        content = response.content.decode()
+        self.assertLess(content.index('data-position="OG"'), content.index('data-position="OO"'))
+        self.assertLess(content.index('data-position="OO"'), content.index('data-position="CG"'))
+        self.assertLess(content.index('data-position="CG"'), content.index('data-position="CO"'))
+        self.assertContains(response, 'min="50"')
+        self.assertContains(response, 'max="100"')
+        self.assertContains(response, "call-badge")
+        self.assertEqual(self.client.get("/ballot/old-token/", secure=True).status_code, 404)
+
+    def test_chair_can_submit_from_private_url(self):
+        data = {}
+        for index, pair in enumerate(self.room.pairs.prefetch_related("slots")):
+            for slot in pair.slots.all():
+                data[f"score_{slot.id}"] = 70 + index
+        response = self.client.post(reverse("judge_portal", args=[self.judge.private_token]), data, secure=True)
+        self.assertContains(response, "Resultado recebido")
+        self.assertEqual(PairResult.objects.filter(room=self.room, submitted=True).count(), 4)
+
+    def test_panel_does_not_receive_a_result_form(self):
+        panel = Judge.objects.create(name="Panel Teste")
+        JudgeAllocation.objects.create(round=self.round, room=self.room, judge=panel, role="panel")
+        response = self.client.get(reverse("judge_portal", args=[panel.private_token]), secure=True)
+        self.assertContains(response, "não está alocado como chair")
+        self.assertNotContains(response, "result-form")
+
+    def test_manage_page_lists_each_judges_fixed_url(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("judge_links"), secure=True)
+        self.assertContains(response, self.judge.name)
+        self.assertContains(response, reverse("judge_portal", args=[self.judge.private_token]))
 
 
 class AuthenticationTests(TestCase):
