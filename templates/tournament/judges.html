@@ -1,0 +1,3 @@
+{% extends 'base.html' %}
+{% block content %}<div class="page-head"><div><p class="eyebrow">Adjudication</p><h1>{{ round.name }} Judges</h1></div></div>
+<form method="post">{% csrf_token %}{% for room, form in forms %}<section class="card"><h2>{{ room.name }}</h2><p>{% for pair in room.pairs.all %}{{ pair.names }}{% if not forloop.last %} · {% endif %}{% endfor %}</p>{{ form.as_p }}{% for warning in room.allocation_warnings %}<div class="alert warning">{{ warning }}</div>{% endfor %}</section>{% endfor %}<button class="button">Save allocations</button></form>{% endblock %}
