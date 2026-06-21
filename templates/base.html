@@ -12,6 +12,7 @@
     <a class="brand" href="{% url 'home' %}"><span>SHUFFLE</span> CUP</a>
     <nav>
       <a href="{% url 'public_standings' %}">Classificação</a>
+      <a href="{% url 'round_results' %}">Resultados</a>
       {% if user.is_authenticated %}<a href="{% url 'dashboard' %}">Organização</a><form method="post" action="{% url 'logout' %}" class="nav-form">{% csrf_token %}<button>Encerrar sessão</button></form>{% else %}<a href="{% url 'login' %}">Login</a>{% endif %}
     </nav>
   </header>

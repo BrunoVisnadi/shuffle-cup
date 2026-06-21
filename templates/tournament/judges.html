@@ -5,7 +5,6 @@
   <div><p class="eyebrow">Adjudicação</p><h1>Alocação de juízes</h1><p class="lead">{{ round.name }}</p></div>
   <a class="button secondary" href="{% url 'manage_round' round.id %}">Voltar à rodada</a>
 </div>
-<div class="alert allocation-note"><strong>Impedimentos e sociedades geram avisos, mas não bloqueiam.</strong> Um juiz já alocado fica indisponível nas demais salas.</div>
 <form method="post" id="judge-allocation-form">{% csrf_token %}
   <div class="allocation-layout">
     <aside class="allocation-sidebar">

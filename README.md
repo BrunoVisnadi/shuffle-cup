@@ -28,7 +28,7 @@ Conflict imports can alternatively include `debater_1_name`, `debater_2_name`, `
 
 ## Tournament workflow
 
-Use the management dashboard to generate a draft draw, review warnings, swap participants, publish the draw, and allocate judges. Each judge has a fixed private URL; chairs use it to submit the result of their room in the current round. Submitted results remain unofficial until the tab team confirms each room. Public standings include only confirmed, non-silent preliminary rounds. Rounds 4 and 5 are created as silent by default.
+Use the management dashboard to generate and publish the draw, review warnings, and allocate judges. Each judge has a fixed private URL; chairs use it to submit the result of their room in the current round. Submitted results remain unofficial until the tab team confirms each room. Public standings show only total points through Round 3 until the tournament is closed. Rounds 4 and 5 are created as silent by default.
 
 After Round 5, record choices for dual-eligible novices on **Manage break choices**. Generate the open semifinals and novice final from their round pages. Once semifinal results are confirmed, generate the open final. Publish final tabs only after both finals are confirmed.
 

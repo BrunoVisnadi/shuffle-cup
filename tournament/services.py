@@ -223,6 +223,8 @@ def submit_prelim(room, values):
         PairResult.objects.update_or_create(temporary_pair=pair, defaults={"round": room.round, "room": room, "rank": rank, "team_points": 4 - rank, "submitted": True, "confirmed": False})
         for slot in pair.slots.all():
             SpeakerScore.objects.update_or_create(participant_slot=slot, defaults={"round": room.round, "room": room, "speaker_points": values[slot.id], "confirmed": False})
+    room.round.results_confirmed = False
+    room.round.save(update_fields=["results_confirmed"])
 
 
 @transaction.atomic
@@ -235,6 +237,8 @@ def submit_elimination(room, selected_ids):
         raise ValidationError("Seleção de duplas inválida.")
     for pair in room.pairs.all():
         PairResult.objects.update_or_create(temporary_pair=pair, defaults={"round": room.round, "room": room, "advances": room.round.kind == Round.OPEN_SEMI and pair.id in selected_ids, "champion": room.round.kind != Round.OPEN_SEMI and pair.id in selected_ids, "submitted": True, "confirmed": False})
+    room.round.results_confirmed = False
+    room.round.save(update_fields=["results_confirmed"])
 
 
 @transaction.atomic

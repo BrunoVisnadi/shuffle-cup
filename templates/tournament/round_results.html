@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block title %}Resultados por rodada{% endblock %}
+{% block content %}
+<div class="page-head"><div><p class="eyebrow">{% if admin_view %}Visão da organização{% else %}Resultados oficiais{% endif %}</p><h1>Resultados por rodada</h1></div>{% if admin_view %}<a class="button secondary" href="{% url 'dashboard' %}">Voltar ao painel</a>{% endif %}</div>
+{% for round in rounds %}
+<section><div class="round-result-head"><h2>{{ round.name }}</h2>{% if round.results_confirmed %}<span class="result-status confirmed">&#10003; Rodada confirmada</span>{% else %}<span class="result-status pending">Em andamento</span>{% endif %}</div>
+  {% for room in round.rooms.all %}<div class="card room"><div class="room-head"><h3>{{ room.name }}</h3></div><div class="pair-grid">
+    {% for pair in room.pairs.all %}<div class="pair"><span class="position">{{ pair.position }}</span><div><strong>{{ pair.names }}</strong>{% if pair.result.submitted %}<small>{% if round.kind == 'prelim' %}{{ pair.result.rank }}ª posição · {{ pair.result.team_points }} TP{% elif pair.result.champion %}CAMPEÃ{% elif pair.result.advances %}AVANÇA{% else %}Não avança{% endif %}</small>{% else %}<small>Resultado não enviado</small>{% endif %}</div></div>{% endfor %}
+  </div>{% if admin_view %}<a class="button secondary small" href="{% url 'edit_room_result' room.id %}">Editar resultado</a>{% endif %}</div>{% endfor %}
+</section>
+{% empty %}<section class="card"><p>Ainda não há rodadas disponíveis nesta página.</p></section>{% endfor %}
+{% endblock %}

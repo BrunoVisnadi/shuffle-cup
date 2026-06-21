@@ -2,7 +2,7 @@
 {% block title %}Classificação{% endblock %}
 {% block content %}
 <div class="page-head"><div><p class="eyebrow">{% if public %}Tab público{% else %}Tab interno{% endif %}</p><h1>Classificação{% if limit %} após a Rodada {{ limit }}{% endif %}</h1></div></div>
-{% if silent_active %}<div class="alert warning">A classificação está silenciosa. A classificação pública mais recente é após a Rodada 3.</div>{% endif %}
-<div class="table-wrap"><table><thead><tr><th>#</th><th>Debatedor</th><th>Sociedade</th><th>TP</th><th>Força do draw</th><th>Speaker</th><th>1º</th><th>2º</th></tr></thead>
-<tbody>{% for row in rows %}<tr><td class="rank">{{ row.rank }}</td><td><strong>{{ row.debater.name }}</strong>{% if row.debater.is_novice %} <span class="tag">N</span>{% endif %}</td><td>{{ row.debater.society|default:'-' }}</td><td>{{ row.team_points }}</td><td>{{ row.draw_strength }}</td><td>{{ row.speaker_points }}</td><td>{{ row.firsts }}</td><td>{{ row.seconds }}</td></tr>{% empty %}<tr><td colspan="8">Ainda não há resultados confirmados.</td></tr>{% endfor %}</tbody></table></div>
+{% if silent_active %}<div class="alert warning">A classificação pública permanece limitada à Rodada 3 até o encerramento do torneio.</div>{% endif %}
+<div class="table-wrap"><table><thead><tr>{% if show_full %}<th>#</th>{% endif %}<th>Debatedor</th><th>Sociedade</th><th>Total de pontos</th>{% if show_full %}<th>Força do draw</th><th>Speaker points</th><th>1º</th><th>2º</th>{% endif %}</tr></thead>
+<tbody>{% for row in rows %}<tr>{% if show_full %}<td class="rank">{{ row.rank }}</td>{% endif %}<td><strong>{{ row.debater.name }}</strong>{% if row.debater.is_novice %} <span class="tag">N</span>{% endif %}</td><td>{{ row.debater.society|default:'-' }}</td><td>{{ row.team_points }}</td>{% if show_full %}<td>{{ row.draw_strength }}</td><td>{{ row.speaker_points }}</td><td>{{ row.firsts }}</td><td>{{ row.seconds }}</td>{% endif %}</tr>{% empty %}<tr><td colspan="8">Ainda não há resultados confirmados.</td></tr>{% endfor %}</tbody></table></div>
 {% endblock %}

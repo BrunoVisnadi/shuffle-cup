@@ -7,7 +7,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.http import Http404, HttpResponseBadRequest
+from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
@@ -15,7 +15,7 @@ from django.views.decorators.http import require_POST
 from .forms import CSVUploadForm, JudgeAllocationForm
 from .models import (
     BreakChoice, Debater, DebaterPartnerConflict, Judge,
-    JudgeAllocation, JudgeDebaterConflict, PairResult, ParticipantSlot, Room,
+    JudgeAllocation, JudgeDebaterConflict, PairResult, Room,
     Round, SiteSettings, Society, SpeakerScore,
 )
 from .services import (
@@ -41,10 +41,38 @@ def public_draw(request, round_id):
 
 
 def public_standings(request):
-    completed = Round.objects.filter(kind=Round.PRELIM, results_confirmed=True, silent=False).order_by("-number").first()
+    tournament_ended = _setting().final_tab_published
+    completed = Round.objects.filter(kind=Round.PRELIM, results_confirmed=True, number__lte=5 if tournament_ended else 3).order_by("-number").first()
     limit = completed.number if completed else 0
-    silent_active = Round.objects.filter(kind=Round.PRELIM, silent=True, results_confirmed=True).exists()
-    return render(request, "tournament/standings.html", {"rows": standings(round_limit=limit, public=True), "limit": limit, "silent_active": silent_active, "public": True})
+    silent_active = not tournament_ended and Round.objects.filter(kind=Round.PRELIM, number__gt=3, results_confirmed=True).exists()
+    rows = standings(round_limit=limit, public=True)
+    if not tournament_ended:
+        rows.sort(key=lambda row: (-row["team_points"], row["debater"].name.lower()))
+    return render(request, "tournament/standings.html", {
+        "rows": rows, "limit": limit,
+        "silent_active": silent_active, "public": True, "show_full": tournament_ended,
+    })
+
+
+def round_results(request):
+    tournament_ended = _setting().final_tab_published
+    rounds = Round.objects.filter(results_confirmed=True, draw_published=True)
+    if not tournament_ended:
+        rounds = rounds.filter(kind=Round.PRELIM, number__lte=3, silent=False)
+    rounds = rounds.prefetch_related(
+        "rooms__pairs__slots__debater", "rooms__pairs__slots__swing",
+        "rooms__pairs__slots__speaker_score", "rooms__pairs__result",
+    )
+    return render(request, "tournament/round_results.html", {"rounds": rounds, "admin_view": False})
+
+
+@login_required
+def admin_round_results(request):
+    rounds = Round.objects.filter(rooms__pairs__result__submitted=True).distinct().prefetch_related(
+        "rooms__pairs__slots__debater", "rooms__pairs__slots__swing",
+        "rooms__pairs__slots__speaker_score", "rooms__pairs__result",
+    )
+    return render(request, "tournament/round_results.html", {"rounds": rounds, "admin_view": True})
 
 
 def final_results(request):
@@ -185,10 +213,18 @@ def csv_import(request, kind):
 @login_required
 def manage_round(request, round_id):
     round_obj = get_object_or_404(Round, pk=round_id)
-    rooms = round_obj.rooms.prefetch_related("pairs__slots__debater__society", "pairs__slots__swing", "pairs__result")
+    rooms = list(round_obj.rooms.prefetch_related(
+        "pairs__slots__debater__society", "pairs__slots__swing", "pairs__result",
+        "judge_allocations__judge__society",
+    ))
     hard, warnings = draw_warnings(round_obj) if round_obj.rooms.exists() else ([], [])
-    all_slots = ParticipantSlot.objects.filter(pair__round=round_obj).select_related("debater", "swing")
-    return render(request, "tournament/manage_round.html", {"round": round_obj, "rooms": rooms, "hard": hard, "warnings": warnings, "all_slots": all_slots})
+    for room in rooms:
+        results = [pair.result for pair in room.pairs.all() if hasattr(pair, "result")]
+        room.result_confirmed = bool(results) and all(result.confirmed for result in results)
+        room.result_submitted = bool(results) and all(result.submitted for result in results)
+        room.chair = next((allocation.judge for allocation in room.judge_allocations.all() if allocation.role == "chair"), None)
+        room.panel = [allocation.judge for allocation in room.judge_allocations.all() if allocation.role == "panel"]
+    return render(request, "tournament/manage_round.html", {"round": round_obj, "rooms": rooms, "hard": hard, "warnings": warnings})
 
 
 @login_required
@@ -216,7 +252,7 @@ def generate_draw(request, round_id):
                 generate_outround(round_obj, advancing)
         round_obj.draw_published = False
         round_obj.save(update_fields=["draw_published"])
-        messages.success(request, "Rascunho do draw gerado.")
+        messages.success(request, "Draw gerado.")
     except ValidationError as exc:
         messages.error(request, "; ".join(exc.messages))
     return redirect("manage_round", round_id=round_id)
@@ -239,29 +275,6 @@ def publish_draw(request, round_id):
     return redirect("manage_round", round_id=round_id)
 
 
-@login_required
-@require_POST
-@transaction.atomic
-def swap_slots(request, round_id):
-    round_obj = get_object_or_404(Round, pk=round_id)
-    first = get_object_or_404(ParticipantSlot, pk=request.POST.get("first"), pair__round=round_obj)
-    second = get_object_or_404(ParticipantSlot, pk=request.POST.get("second"), pair__round=round_obj)
-    first.debater_id, second.debater_id = second.debater_id, first.debater_id
-    first.swing_id, second.swing_id = second.swing_id, first.swing_id
-    first.save(update_fields=["debater", "swing"])
-    second.save(update_fields=["debater", "swing"])
-    hard, _ = draw_warnings(round_obj)
-    if hard:
-        transaction.set_rollback(True)
-        messages.error(request, "Troca rejeitada: " + " ".join(hard))
-    else:
-        for slot in (first, second):
-            if slot.swing_id:
-                slot.swing.room = slot.pair.room
-                slot.swing.position = slot.pair.position
-                slot.swing.save(update_fields=["room", "position"])
-        messages.success(request, "Participantes trocados.")
-    return redirect("manage_round", round_id=round_id)
 
 
 @login_required
@@ -345,6 +358,29 @@ def regenerate_judge_link(request, judge_id):
     return redirect("judge_links")
 
 
+def _prepare_result_pairs(room):
+    pairs = list(room.pairs.select_related("result").prefetch_related("slots__debater", "slots__swing", "slots__speaker_score"))
+    for pair in pairs:
+        result = getattr(pair, "result", None)
+        pair.is_selected = bool(result and (result.advances or result.champion))
+        for slot in pair.slots.all():
+            score = getattr(slot, "speaker_score", None)
+            slot.input_score = score.speaker_points if score else ""
+    return pairs
+
+
+def _submit_result(request, room):
+    if room.round.kind == Round.PRELIM:
+        values = {
+            slot.id: Decimal(request.POST[f"score_{slot.id}"])
+            for pair in room.pairs.prefetch_related("slots")
+            for slot in pair.slots.all()
+        }
+        submit_prelim(room, values)
+    else:
+        submit_elimination(room, [int(value) for value in request.POST.getlist("selected")])
+
+
 def judge_portal(request, token):
     judge = get_object_or_404(Judge, private_token=token, active=True)
     current_round = _setting().current_round
@@ -356,23 +392,30 @@ def judge_portal(request, token):
     room = allocation.room if allocation else None
     if not room:
         return render(request, "tournament/judge_portal.html", {"judge": judge, "room": None})
-    pairs = room.pairs.prefetch_related("slots__debater", "slots__swing")
     if request.method == "POST":
         try:
             if PairResult.objects.filter(room=room, confirmed=True).exists():
                 raise ValidationError("O resultado desta sala já foi confirmado.")
-            if room.round.kind == Round.PRELIM:
-                values = {}
-                for pair in pairs:
-                    for slot in pair.slots.all():
-                        values[slot.id] = Decimal(request.POST[f"score_{slot.id}"])
-                submit_prelim(room, values)
-            else:
-                submit_elimination(room, [int(value) for value in request.POST.getlist("selected")])
+            _submit_result(request, room)
             return render(request, "tournament/ballot_thanks.html", {"room": room})
         except (ValidationError, InvalidOperation, KeyError, ValueError) as exc:
             messages.error(request, "; ".join(exc.messages) if isinstance(exc, ValidationError) else "Informe uma nota válida para cada participante.")
+    pairs = _prepare_result_pairs(room)
     return render(request, "tournament/judge_portal.html", {"judge": judge, "room": room, "pairs": pairs})
+
+
+@login_required
+def edit_room_result(request, room_id):
+    room = get_object_or_404(Room.objects.select_related("round"), pk=room_id)
+    if request.method == "POST":
+        try:
+            _submit_result(request, room)
+            messages.success(request, f"Resultado de {room.name} salvo. Confirme-o após a revisão.")
+            return redirect("manage_round", round_id=room.round_id)
+        except (ValidationError, InvalidOperation, KeyError, ValueError) as exc:
+            messages.error(request, "; ".join(exc.messages) if isinstance(exc, ValidationError) else "Informe dados válidos para todos os participantes.")
+    pairs = _prepare_result_pairs(room)
+    return render(request, "tournament/judge_portal.html", {"room": room, "pairs": pairs, "admin_edit": True})
 
 
 @login_required
@@ -389,7 +432,7 @@ def confirm_result(request, room_id):
 
 @login_required
 def admin_standings(request):
-    return render(request, "tournament/standings.html", {"rows": standings(round_limit=5), "public": False})
+    return render(request, "tournament/standings.html", {"rows": standings(round_limit=5), "public": False, "show_full": True})
 
 
 @login_required
@@ -411,10 +454,10 @@ def manage_break(request):
 def publish_final(request):
     champion_kinds = set(PairResult.objects.filter(confirmed=True, champion=True).values_list("round__kind", flat=True))
     if not {Round.OPEN_FINAL, Round.NOVICE_FINAL} <= champion_kinds:
-        messages.error(request, "Confirme os ballots dos campeões das duas finais antes de publicar os tabs finais.")
+        messages.error(request, "Confirme os resultados dos campeões das duas finais antes de encerrar o torneio.")
         return redirect("dashboard")
     setting = _setting()
     setting.final_tab_published = True
     setting.save()
-    messages.success(request, "Tabs finais e resultados publicados.")
+    messages.success(request, "Torneio encerrado. Resultados e standings completas foram publicados.")
     return redirect("dashboard")

@@ -177,6 +177,17 @@ class StandingsTests(TournamentTestCase):
         self.assertEqual(public_total, 12)
         self.assertEqual(admin_total, 24)
 
+        response = self.client.get(reverse("public_standings"), secure=True)
+        self.assertContains(response, "Total de pontos")
+        self.assertNotContains(response, "Força do draw")
+        self.assertNotContains(response, "Speaker points")
+        setting = SiteSettings.load()
+        setting.final_tab_published = True
+        setting.save()
+        response = self.client.get(reverse("public_standings"), secure=True)
+        self.assertContains(response, "Força do draw")
+        self.assertContains(response, "Speaker points")
+
     def test_draw_strength_counts_repeated_opponents(self):
         self.make_debaters(8)
         for number in (1, 2):
@@ -237,7 +248,7 @@ class JudgeAllocationTests(TournamentTestCase):
         self.assertContains(response, "Sociedade A")
         self.assertContains(response, "Juíza Teste")
         self.assertContains(response, str(self.debaters[0].id))
-        self.assertContains(response, "Impedimentos e sociedades geram avisos, mas não bloqueiam")
+        self.assertNotContains(response, "Impedimentos e sociedades geram avisos, mas não bloqueiam")
 
     def test_conflicted_allocation_is_allowed_but_duplicate_is_rejected(self):
         rooms = list(self.round.rooms.all())
@@ -303,6 +314,88 @@ class JudgePortalTests(TournamentTestCase):
         response = self.client.get(reverse("judge_links"), secure=True)
         self.assertContains(response, self.judge.name)
         self.assertContains(response, reverse("judge_portal", args=[self.judge.private_token]))
+
+
+class AdminResultTests(TournamentTestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="tab", password="secret")
+        self.client.force_login(self.user)
+        self.make_debaters(8)
+        self.round = self.make_round()
+        generate_prelim_draw(self.round)
+        self.room = self.round.rooms.get()
+        self.chair = Judge.objects.create(name="Chair Admin")
+        self.panel = Judge.objects.create(name="Panel Admin")
+        JudgeAllocation.objects.create(round=self.round, room=self.room, judge=self.chair, role="chair")
+        JudgeAllocation.objects.create(round=self.round, room=self.room, judge=self.panel, role="panel")
+
+    def score_data(self):
+        data = {}
+        for index, pair in enumerate(self.room.pairs.prefetch_related("slots")):
+            for slot in pair.slots.all():
+                data[f"score_{slot.id}"] = 70 + index
+        return data
+
+    def test_admin_can_insert_edit_and_confirm_result(self):
+        edit_url = reverse("edit_room_result", args=[self.room.id])
+        self.assertContains(self.client.get(edit_url, secure=True), "Edição administrativa")
+        response = self.client.post(edit_url, self.score_data(), secure=True)
+        self.assertRedirects(response, reverse("manage_round", args=[self.round.id]), fetch_redirect_response=False)
+        self.assertEqual(PairResult.objects.filter(room=self.room, submitted=True).count(), 4)
+
+        manage = self.client.get(reverse("manage_round", args=[self.round.id]), secure=True)
+        self.assertContains(manage, "Chair Admin")
+        self.assertContains(manage, "Panel Admin")
+        self.assertContains(manage, "Aguardando confirmação")
+        self.assertNotContains(manage, "Trocar dois participantes")
+        self.assertContains(manage, "Gerar draw novamente")
+        self.assertEqual(self.client.post(f"/manage/round/{self.round.id}/swap/", secure=True).status_code, 404)
+
+        self.client.post(reverse("confirm_result", args=[self.room.id]), secure=True)
+        manage = self.client.get(reverse("manage_round", args=[self.round.id]), secure=True)
+        self.assertContains(manage, "Confirmado")
+
+        changed = self.score_data()
+        first_key = next(iter(changed))
+        changed[first_key] = 80
+        self.client.post(edit_url, changed, secure=True)
+        self.round.refresh_from_db()
+        self.assertFalse(self.round.results_confirmed)
+
+
+class RoundPublicationTests(TournamentTestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="tab", password="secret")
+        self.make_debaters(8)
+        self.public_round = self.make_round(1)
+        self.closed_round = self.make_round(4, silent=True)
+        for round_obj in (self.public_round, self.closed_round):
+            generate_prelim_draw(round_obj)
+            round_obj.draw_published = True
+            round_obj.save(update_fields=["draw_published"])
+            room = round_obj.rooms.get()
+            values = {}
+            for index, pair in enumerate(room.pairs.prefetch_related("slots")):
+                for slot in pair.slots.all():
+                    values[slot.id] = Decimal(70 + index)
+            submit_prelim(room, values)
+            confirm_room(room)
+
+    def test_closed_round_is_admin_only_until_tournament_ends(self):
+        response = self.client.get(reverse("round_results"), secure=True)
+        self.assertContains(response, self.public_round.name)
+        self.assertNotContains(response, self.closed_round.name)
+
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("admin_round_results"), secure=True)
+        self.assertContains(response, self.public_round.name)
+        self.assertContains(response, self.closed_round.name)
+
+        setting = SiteSettings.load()
+        setting.final_tab_published = True
+        setting.save()
+        response = self.client.get(reverse("round_results"), secure=True)
+        self.assertContains(response, self.closed_round.name)
 
 
 class AuthenticationTests(TestCase):

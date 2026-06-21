@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Área de {{ judge.name }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><p class="eyebrow">Área privada do juiz</p><h1>{{ judge.name }}</h1></div></div>
+<div class="page-head"><div><p class="eyebrow">{% if admin_edit %}Edição administrativa{% else %}Área privada do juiz{% endif %}</p><h1>{% if admin_edit %}Resultado de {{ room.name }}{% else %}{{ judge.name }}{% endif %}</h1></div>{% if admin_edit %}<a class="button secondary" href="{% url 'manage_round' room.round.id %}">Voltar à rodada</a>{% endif %}</div>
 {% if not room %}
   <section class="card"><h2>Nenhuma sala disponível</h2><p>Você não está alocado como chair na rodada vigente.</p></section>
 {% else %}
@@ -12,14 +12,14 @@
       <span class="position">{{ pair.position }}</span>
       <div class="result-pair-head"><h2>{{ pair.names }}</h2>{% if room.round.kind == 'prelim' %}<span class="call-badge">Aguardando notas</span>{% endif %}</div>
       {% if room.round.kind == 'prelim' %}
-        {% for slot in pair.slots.all %}<label>{{ slot.display_name }}{% if slot.is_swing %} <span class="swing">SWING</span>{% endif %}<input class="score-input" type="number" min="50" max="100" step="0.01" name="score_{{ slot.id }}" required></label>{% endfor %}
+        {% for slot in pair.slots.all %}<label>{{ slot.display_name }}{% if slot.is_swing %} <span class="swing">SWING</span>{% endif %}<input class="score-input" type="number" min="50" max="100" step="0.01" name="score_{{ slot.id }}" value="{{ slot.input_score }}" required></label>{% endfor %}
         <p class="pair-total">Total: <strong>--</strong></p>
       {% else %}
-        <label class="select-pair"><input type="checkbox" name="selected" value="{{ pair.id }}"> {% if room.round.kind == 'open_semifinal' %}Avançar esta dupla{% else %}Dupla campeã{% endif %}</label>
+        <label class="select-pair"><input type="checkbox" name="selected" value="{{ pair.id }}" {% if pair.is_selected %}checked{% endif %}> {% if room.round.kind == 'open_semifinal' %}Avançar esta dupla{% else %}Dupla campeã{% endif %}</label>
       {% endif %}
     </section>
   {% endfor %}
-  <button class="button orange-button">Enviar resultado</button></form>
+  <button class="button orange-button">{% if admin_edit %}Salvar resultado{% else %}Enviar resultado{% endif %}</button></form>
 {% endif %}
 {% if room and room.round.kind == 'prelim' %}
 <script>
