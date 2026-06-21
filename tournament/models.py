@@ -49,7 +49,7 @@ class Round(models.Model):
     OPEN_SEMI = "open_semifinal"
     OPEN_FINAL = "open_final"
     NOVICE_FINAL = "novice_final"
-    KINDS = [(PRELIM, "Preliminary"), (OPEN_SEMI, "Open semifinal"), (OPEN_FINAL, "Open final"), (NOVICE_FINAL, "Novice final")]
+    KINDS = [(PRELIM, "Preliminar"), (OPEN_SEMI, "Semifinal Open"), (OPEN_FINAL, "Final Open"), (NOVICE_FINAL, "Final novice")]
 
     name = models.CharField(max_length=100)
     number = models.PositiveSmallIntegerField()
@@ -121,7 +121,7 @@ class ParticipantSlot(models.Model):
 
     def clean(self):
         if (self.debater_id is None) == (self.swing_id is None):
-            raise ValidationError("A slot must contain exactly one debater or swing.")
+            raise ValidationError("Uma vaga deve conter exatamente um debatedor ou swing.")
 
     @property
     def display_name(self):
@@ -180,7 +180,6 @@ class BallotToken(models.Model):
 class DebaterPartnerConflict(models.Model):
     debater_a = models.ForeignKey(Debater, related_name="partner_conflicts_a", on_delete=models.CASCADE)
     debater_b = models.ForeignKey(Debater, related_name="partner_conflicts_b", on_delete=models.CASCADE)
-    reason = models.CharField(max_length=300, blank=True)
 
     class Meta:
         unique_together = [("debater_a", "debater_b")]
@@ -189,14 +188,13 @@ class DebaterPartnerConflict(models.Model):
 class JudgeDebaterConflict(models.Model):
     judge = models.ForeignKey(Judge, related_name="debater_conflicts", on_delete=models.CASCADE)
     debater = models.ForeignKey(Debater, related_name="judge_conflicts", on_delete=models.CASCADE)
-    reason = models.CharField(max_length=300, blank=True)
 
     class Meta:
         unique_together = [("judge", "debater")]
 
 
 class BreakChoice(models.Model):
-    CHOICES = [("open", "Open semifinals"), ("novice", "Novice final")]
+    CHOICES = [("open", "Semifinais Open"), ("novice", "Final novice")]
     debater = models.OneToOneField(Debater, related_name="break_choice", on_delete=models.CASCADE)
     choice = models.CharField(max_length=10, choices=CHOICES)
 

@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block title %}Login - Shuffle Cup{% endblock %}
+{% block content %}
+<div class="page-head"><div><p class="eyebrow">Organização</p><h1>Login</h1></div></div>
+<section class="card">
+  {% if form.errors %}<div class="alert error">Usuário ou senha inválidos.</div>{% endif %}
+  <form method="post">{% csrf_token %}
+    <label for="id_username">Usuário</label>{{ form.username }}
+    <label for="id_password">Senha</label>{{ form.password }}
+    {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+    <button class="button orange-button">Entrar</button>
+  </form>
+</section>
+{% endblock %}

@@ -37,7 +37,7 @@ def home(request):
 
 def public_draw(request, round_id):
     round_obj = get_object_or_404(Round, pk=round_id, draw_published=True)
-    rooms = round_obj.rooms.prefetch_related("pairs__slots__debater__society", "pairs__slots__swing", "judge_allocations__judge")
+    rooms = round_obj.rooms.prefetch_related("pairs__slots__debater__society", "pairs__slots__swing", "judge_allocations__judge__society")
     return render(request, "tournament/draw.html", {"round": round_obj, "rooms": rooms})
 
 
@@ -74,14 +74,14 @@ def dashboard(request):
 @require_POST
 def setup_rounds(request):
     specifications = [
-        ("Round 1", 1, Round.PRELIM, False), ("Round 2", 2, Round.PRELIM, False),
-        ("Round 3", 3, Round.PRELIM, False), ("Round 4", 4, Round.PRELIM, True),
-        ("Round 5", 5, Round.PRELIM, True), ("Open Semifinals", 6, Round.OPEN_SEMI, False),
-        ("Novice Final", 6, Round.NOVICE_FINAL, False), ("Open Final", 7, Round.OPEN_FINAL, False),
+        ("Rodada 1", 1, Round.PRELIM, False), ("Rodada 2", 2, Round.PRELIM, False),
+        ("Rodada 3", 3, Round.PRELIM, False), ("Rodada 4", 4, Round.PRELIM, True),
+        ("Rodada 5", 5, Round.PRELIM, True), ("Semifinais Open", 6, Round.OPEN_SEMI, False),
+        ("Final novice", 6, Round.NOVICE_FINAL, False), ("Final Open", 7, Round.OPEN_FINAL, False),
     ]
     for name, number, kind, silent in specifications:
         Round.objects.update_or_create(number=number, kind=kind, defaults={"name": name, "silent": silent})
-    messages.success(request, "Standard Shuffle Cup rounds are ready.")
+    messages.success(request, "As rodadas padrão estão prontas.")
     return redirect("dashboard")
 
 
@@ -91,7 +91,7 @@ def _bool(value):
         return True
     if normalized in {"false", "no", "0", "nao", "não"}:
         return False
-    raise ValueError(f"Invalid boolean: {value}")
+    raise ValueError(f"Valor booleano inválido: {value}")
 
 
 def _find_person(model, email, name):
@@ -104,28 +104,28 @@ def _validate_csv(kind, rows):
     required = {
         "debaters": {"name", "email", "society", "is_novice"},
         "judges": {"name", "email", "society"},
-        "partner-conflicts": {"debater_1_email", "debater_2_email", "reason"},
-        "judge-conflicts": {"judge_email", "debater_email", "reason"},
+        "partner-conflicts": {"debater_1_email", "debater_2_email"},
+        "judge-conflicts": {"judge_email", "debater_email"},
     }[kind]
     errors = []
     if not rows:
-        return ["The CSV has no data rows."]
+        return ["O CSV não contém linhas de dados."]
     if rows and not required <= set(rows[0]):
-        errors.append(f"Required columns: {', '.join(sorted(required))}")
+        errors.append(f"Colunas obrigatórias: {', '.join(sorted(required))}")
     for index, row in enumerate(rows, 2):
         try:
             if kind in {"debaters", "judges"} and not row.get("name", "").strip():
-                raise ValueError("name is required")
+                raise ValueError("name é obrigatório")
             if kind == "debaters":
                 _bool(row.get("is_novice"))
             if kind == "partner-conflicts":
                 if not _find_person(Debater, row.get("debater_1_email"), row.get("debater_1_name", "")) or not _find_person(Debater, row.get("debater_2_email"), row.get("debater_2_name", "")):
-                    raise ValueError("debater not found")
+                    raise ValueError("debatedor não encontrado")
             if kind == "judge-conflicts":
                 if not _find_person(Judge, row.get("judge_email"), row.get("judge_name", "")) or not _find_person(Debater, row.get("debater_email"), row.get("debater_name", "")):
-                    raise ValueError("judge or debater not found")
+                    raise ValueError("juiz ou debatedor não encontrado")
         except (ValueError, TypeError) as exc:
-            errors.append(f"Row {index}: {exc}")
+            errors.append(f"Linha {index}: {exc}")
     return errors
 
 
@@ -144,11 +144,11 @@ def _commit_csv(kind, rows):
             first = _find_person(Debater, row["debater_1_email"], row.get("debater_1_name", ""))
             second = _find_person(Debater, row["debater_2_email"], row.get("debater_2_name", ""))
             a, b = sorted((first, second), key=lambda d: d.id)
-            DebaterPartnerConflict.objects.update_or_create(debater_a=a, debater_b=b, defaults={"reason": row.get("reason", "")})
+            DebaterPartnerConflict.objects.get_or_create(debater_a=a, debater_b=b)
         else:
             judge = _find_person(Judge, row["judge_email"], row.get("judge_name", ""))
             debater = _find_person(Debater, row["debater_email"], row.get("debater_name", ""))
-            JudgeDebaterConflict.objects.update_or_create(judge=judge, debater=debater, defaults={"reason": row.get("reason", "")})
+            JudgeDebaterConflict.objects.get_or_create(judge=judge, debater=debater)
 
 
 @login_required
@@ -159,13 +159,13 @@ def csv_import(request, kind):
     if request.method == "POST" and "commit" in request.POST:
         rows = request.session.get(f"csv_{kind}")
         if rows is None:
-            messages.error(request, "Upload the CSV again; the preview expired.")
+            messages.error(request, "Envie o CSV novamente; a prévia expirou.")
         else:
             errors = _validate_csv(kind, rows)
             if not errors:
                 _commit_csv(kind, rows)
                 request.session.pop(f"csv_{kind}", None)
-                messages.success(request, f"Imported {len(rows)} rows.")
+                messages.success(request, f"{len(rows)} linhas importadas.")
                 return redirect("dashboard")
     elif request.method == "POST":
         form = CSVUploadForm(request.POST, request.FILES)
@@ -198,16 +198,16 @@ def generate_draw(request, round_id):
     round_obj = get_object_or_404(Round, pk=round_id)
     try:
         if PairResult.objects.filter(round=round_obj, submitted=True).exists():
-            raise ValidationError("A ballot has already been submitted. The draw can no longer be regenerated.")
+            raise ValidationError("Um ballot já foi enviado. O draw não pode mais ser gerado novamente.")
         if round_obj.kind == Round.PRELIM:
             generate_prelim_draw(round_obj)
         else:
             if Round.objects.filter(kind=Round.PRELIM, number__lte=5, results_confirmed=True).count() < 5:
-                raise ValidationError("Confirm all five preliminary rounds before generating outrounds.")
+                raise ValidationError("Confirme as cinco rodadas preliminares antes de gerar as eliminatórias.")
             open_break, novice_break = break_lists()
             if round_obj.kind == Round.OPEN_SEMI:
                 if len(open_break) < 16:
-                    raise ValidationError("Fewer than 16 open semifinalists are available.")
+                    raise ValidationError("Há menos de 16 semifinalistas Open disponíveis.")
                 pattern = [0, 3, 4, 7, 8, 11, 12, 15, 1, 2, 5, 6, 9, 10, 13, 14]
                 generate_outround(round_obj, [open_break[i] for i in pattern])
             elif round_obj.kind == Round.NOVICE_FINAL:
@@ -217,7 +217,7 @@ def generate_draw(request, round_id):
                 generate_outround(round_obj, advancing)
         round_obj.draw_published = False
         round_obj.save(update_fields=["draw_published"])
-        messages.success(request, "Draft draw generated.")
+        messages.success(request, "Rascunho do draw gerado.")
     except ValidationError as exc:
         messages.error(request, "; ".join(exc.messages))
     return redirect("manage_round", round_id=round_id)
@@ -229,14 +229,14 @@ def publish_draw(request, round_id):
     round_obj = get_object_or_404(Round, pk=round_id)
     hard, _ = draw_warnings(round_obj)
     if hard:
-        messages.error(request, "Publishing blocked: " + " ".join(hard))
+        messages.error(request, "Publicação bloqueada: " + " ".join(hard))
     else:
         round_obj.draw_published = True
         round_obj.save(update_fields=["draw_published"])
         setting = _setting()
         setting.current_round = round_obj
         setting.save()
-        messages.success(request, "Draw published.")
+        messages.success(request, "Draw publicado.")
     return redirect("manage_round", round_id=round_id)
 
 
@@ -254,14 +254,14 @@ def swap_slots(request, round_id):
     hard, _ = draw_warnings(round_obj)
     if hard:
         transaction.set_rollback(True)
-        messages.error(request, "Swap rejected: " + " ".join(hard))
+        messages.error(request, "Troca rejeitada: " + " ".join(hard))
     else:
         for slot in (first, second):
             if slot.swing_id:
                 slot.swing.room = slot.pair.room
                 slot.swing.position = slot.pair.position
                 slot.swing.save(update_fields=["room", "position"])
-        messages.success(request, "Participants swapped.")
+        messages.success(request, "Participantes trocados.")
     return redirect("manage_round", round_id=round_id)
 
 
@@ -270,33 +270,51 @@ def allocate_judges(request, round_id):
     round_obj = get_object_or_404(Round, pk=round_id)
     rooms = list(round_obj.rooms.prefetch_related("pairs__slots__debater__society", "judge_allocations__judge"))
     if request.method == "POST":
-        for room in rooms:
-            form = JudgeAllocationForm(request.POST, prefix=f"room-{room.id}")
-            if form.is_valid():
-                room.judge_allocations.all().delete()
-                chair = form.cleaned_data["chair"]
-                if chair:
-                    JudgeAllocation.objects.create(round=round_obj, room=room, judge=chair, role="chair")
-                for judge in form.cleaned_data["panels"]:
-                    if judge != chair:
-                        JudgeAllocation.objects.create(round=round_obj, room=room, judge=judge, role="panel")
-        messages.success(request, "Judge allocations saved.")
-        return redirect("allocate_judges", round_id=round_id)
+        submitted_forms = [(room, JudgeAllocationForm(request.POST, prefix=f"room-{room.id}")) for room in rooms]
+        if all(form.is_valid() for room, form in submitted_forms):
+            with transaction.atomic():
+                for room, form in submitted_forms:
+                    room.judge_allocations.all().delete()
+                    chair = form.cleaned_data["chair"]
+                    if chair:
+                        JudgeAllocation.objects.create(round=round_obj, room=room, judge=chair, role="chair")
+                    for judge in form.cleaned_data["panels"]:
+                        if judge != chair:
+                            JudgeAllocation.objects.create(round=round_obj, room=room, judge=judge, role="panel")
+            messages.success(request, "Alocações de juízes salvas.")
+            return redirect("allocate_judges", round_id=round_id)
+        messages.error(request, "Revise os campos de alocação.")
     forms = []
+    room_data = {}
     for room in rooms:
         chair = room.judge_allocations.filter(role="chair").values_list("judge_id", flat=True).first()
         panels = list(room.judge_allocations.filter(role="panel").values_list("judge_id", flat=True))
-        participant_ids = set(ParticipantSlot.objects.filter(pair__room=room, debater__isnull=False).values_list("debater_id", flat=True))
-        society_ids = set(ParticipantSlot.objects.filter(pair__room=room, debater__society__isnull=False).values_list("debater__society_id", flat=True))
-        room.allocation_warnings = []
-        for allocation in room.judge_allocations.select_related("judge"):
-            if JudgeDebaterConflict.objects.filter(judge=allocation.judge, debater_id__in=participant_ids).exists():
-                room.allocation_warnings.append(f"{allocation.judge.name} has an imported conflict in this room.")
-            if allocation.judge.society_id and allocation.judge.society_id in society_ids:
-                room.allocation_warnings.append(f"{allocation.judge.name} shares a society with a debater in this room.")
+        debaters = []
+        for pair in room.pairs.all():
+            for slot in pair.slots.all():
+                if slot.debater_id:
+                    debaters.append({
+                        "id": slot.debater_id,
+                        "name": slot.debater.name,
+                        "society_id": slot.debater.society_id,
+                        "society": slot.debater.society.name if slot.debater.society_id else "",
+                    })
+        room_data[str(room.id)] = {"name": room.name, "debaters": debaters}
         forms.append((room, JudgeAllocationForm(prefix=f"room-{room.id}", initial={"chair": chair, "panels": panels})))
-    conflict_pairs = set(JudgeDebaterConflict.objects.values_list("judge_id", "debater_id"))
-    return render(request, "tournament/judges.html", {"round": round_obj, "forms": forms, "conflict_pairs": conflict_pairs})
+
+    judges = Judge.objects.filter(active=True).select_related("society").prefetch_related("debater_conflicts")
+    judge_data = {
+        str(judge.id): {
+            "name": judge.name,
+            "society_id": judge.society_id,
+            "society": judge.society.name if judge.society_id else "",
+            "conflicts": [conflict.debater_id for conflict in judge.debater_conflicts.all()],
+        }
+        for judge in judges
+    }
+    return render(request, "tournament/judges.html", {
+        "round": round_obj, "forms": forms, "judge_data": judge_data, "room_data": room_data,
+    })
 
 
 @login_required
@@ -328,7 +346,7 @@ def ballot(request, token):
             ballot_token.save()
             return render(request, "tournament/ballot_thanks.html", {"room": room})
         except (ValidationError, InvalidOperation, KeyError, ValueError) as exc:
-            messages.error(request, "; ".join(exc.messages) if isinstance(exc, ValidationError) else "Enter a valid score for every participant.")
+            messages.error(request, "; ".join(exc.messages) if isinstance(exc, ValidationError) else "Informe uma nota válida para cada participante.")
     return render(request, "tournament/ballot.html", {"token": ballot_token, "room": room, "pairs": pairs})
 
 
@@ -338,7 +356,7 @@ def confirm_result(request, room_id):
     room = get_object_or_404(Room, pk=room_id)
     try:
         confirm_room(room)
-        messages.success(request, f"{room.name} result confirmed.")
+        messages.success(request, f"Resultado de {room.name} confirmado.")
     except ValidationError as exc:
         messages.error(request, "; ".join(exc.messages))
     return redirect("manage_round", round_id=room.round_id)
@@ -358,7 +376,7 @@ def manage_break(request):
             value = request.POST.get(f"choice_{debater.id}")
             if value in {"open", "novice"}:
                 BreakChoice.objects.update_or_create(debater=debater, defaults={"choice": value})
-        messages.success(request, "Break choices saved.")
+        messages.success(request, "Escolhas de break salvas.")
         return redirect("manage_break")
     return render(request, "tournament/break.html", {"open_break": open_break, "novice_break": novice_break, "overlap": overlap})
 
@@ -368,10 +386,10 @@ def manage_break(request):
 def publish_final(request):
     champion_kinds = set(PairResult.objects.filter(confirmed=True, champion=True).values_list("round__kind", flat=True))
     if not {Round.OPEN_FINAL, Round.NOVICE_FINAL} <= champion_kinds:
-        messages.error(request, "Confirm both final champion ballots before publishing final tabs.")
+        messages.error(request, "Confirme os ballots dos campeões das duas finais antes de publicar os tabs finais.")
         return redirect("dashboard")
     setting = _setting()
     setting.final_tab_published = True
     setting.save()
-    messages.success(request, "Final tabs and results published.")
+    messages.success(request, "Tabs finais e resultados publicados.")
     return redirect("dashboard")

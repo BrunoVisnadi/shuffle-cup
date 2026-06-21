@@ -1,8 +1,8 @@
 {% extends 'base.html' %}
-{% block title %}Standings{% endblock %}
+{% block title %}Classificação{% endblock %}
 {% block content %}
-<div class="page-head"><div><p class="eyebrow">{% if public %}Public Tab{% else %}Internal Tab{% endif %}</p><h1>Standings{% if limit %} after Round {{ limit }}{% endif %}</h1></div></div>
-{% if silent_active %}<div class="alert warning">Standings are currently silent. The latest public standings are after Round 3.</div>{% endif %}
-<div class="table-wrap"><table><thead><tr><th>#</th><th>Debater</th><th>Society</th><th>TP</th><th>Draw strength</th><th>Speaker</th><th>1sts</th><th>2nds</th></tr></thead>
-<tbody>{% for row in rows %}<tr><td class="rank">{{ row.rank }}</td><td><strong>{{ row.debater.name }}</strong>{% if row.debater.is_novice %} <span class="tag">N</span>{% endif %}</td><td>{{ row.debater.society|default:'-' }}</td><td>{{ row.team_points }}</td><td>{{ row.draw_strength }}</td><td>{{ row.speaker_points }}</td><td>{{ row.firsts }}</td><td>{{ row.seconds }}</td></tr>{% empty %}<tr><td colspan="8">No confirmed results yet.</td></tr>{% endfor %}</tbody></table></div>
+<div class="page-head"><div><p class="eyebrow">{% if public %}Tab público{% else %}Tab interno{% endif %}</p><h1>Classificação{% if limit %} após a Rodada {{ limit }}{% endif %}</h1></div></div>
+{% if silent_active %}<div class="alert warning">A classificação está silenciosa. A classificação pública mais recente é após a Rodada 3.</div>{% endif %}
+<div class="table-wrap"><table><thead><tr><th>#</th><th>Debatedor</th><th>Sociedade</th><th>TP</th><th>Força do draw</th><th>Speaker</th><th>1º</th><th>2º</th></tr></thead>
+<tbody>{% for row in rows %}<tr><td class="rank">{{ row.rank }}</td><td><strong>{{ row.debater.name }}</strong>{% if row.debater.is_novice %} <span class="tag">N</span>{% endif %}</td><td>{{ row.debater.society|default:'-' }}</td><td>{{ row.team_points }}</td><td>{{ row.draw_strength }}</td><td>{{ row.speaker_points }}</td><td>{{ row.firsts }}</td><td>{{ row.seconds }}</td></tr>{% empty %}<tr><td colspan="8">Ainda não há resultados confirmados.</td></tr>{% endfor %}</tbody></table></div>
 {% endblock %}

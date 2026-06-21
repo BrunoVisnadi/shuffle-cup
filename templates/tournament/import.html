@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
-{% block content %}<div class="page-head"><div><p class="eyebrow">CSV Import</p><h1>{{ kind|title }}</h1></div></div>
-{% if errors %}<div class="alert error"><strong>Nothing was imported.</strong>{% for error in errors %}<div>{{ error }}</div>{% endfor %}</div>{% endif %}
-<section class="card"><form method="post" enctype="multipart/form-data">{% csrf_token %}{{ form.as_p }}<button class="button">Validate and preview</button></form></section>
-{% if preview and not errors %}<section><h2>Preview ({{ preview|length }} rows)</h2><div class="table-wrap"><table><thead><tr>{% for key in preview.0.keys %}<th>{{ key }}</th>{% endfor %}</tr></thead><tbody>{% for row in preview %}<tr>{% for value in row.values %}<td>{{ value }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div><form method="post">{% csrf_token %}<button name="commit" class="button">Commit import</button></form></section>{% endif %}
+{% block content %}<div class="page-head"><div><p class="eyebrow">Importação CSV</p><h1>{{ kind|title }}</h1></div></div>
+{% if errors %}<div class="alert error"><strong>Nada foi importado.</strong>{% for error in errors %}<div>{{ error }}</div>{% endfor %}</div>{% endif %}
+<section class="card"><form method="post" enctype="multipart/form-data">{% csrf_token %}{{ form.as_p }}<button class="button">Validar e visualizar</button></form></section>
+{% if preview and not errors %}<section><h2>Prévia ({{ preview|length }} linhas)</h2><div class="table-wrap"><table><thead><tr>{% for key in preview.0.keys %}<th>{{ key }}</th>{% endfor %}</tr></thead><tbody>{% for row in preview %}<tr>{% for value in row.values %}<td>{{ value }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div><form method="post">{% csrf_token %}<button name="commit" class="button">Confirmar importação</button></form></section>{% endif %}
 {% endblock %}

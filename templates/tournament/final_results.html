@@ -1,12 +1,10 @@
 {% extends 'base.html' %}
 {% block content %}
-<section class="hero compact"><p class="eyebrow">Official Results</p><h1>{{ setting.tournament_name }}</h1></section>
-<div class="grid two">
-{% for result in champions %}<div class="card orange"><span class="tag">{{ result.round.get_kind_display }}</span><h2>{{ result.temporary_pair.names }}</h2><p>Champions</p></div>{% endfor %}
-</div>
-<div class="grid two"><section class="card"><h2>Open finalists</h2>{% for d in open_finalists %}<p>{{ d.name }}</p>{% endfor %}</section><section class="card"><h2>Novice finalists</h2>{% for d in novice_finalists %}<p>{{ d.name }}</p>{% endfor %}</section></div>
-<h2>Final preliminary tab</h2>
-<div class="table-wrap"><table><thead><tr><th>#</th><th>Debater</th><th>TP</th><th>Draw strength</th><th>Speaker</th></tr></thead><tbody>{% for row in rows %}<tr><td>{{ row.rank }}</td><td>{{ row.debater.name }}</td><td>{{ row.team_points }}</td><td>{{ row.draw_strength }}</td><td>{{ row.speaker_points }}</td></tr>{% endfor %}</tbody></table></div>
-<h2>Speaker tab</h2>
-<div class="table-wrap"><table><thead><tr><th>#</th><th>Debater</th><th>Society</th><th>Speaker points</th></tr></thead><tbody>{% for row in speaker_rows %}<tr><td>{{ row.speaker_rank }}</td><td>{{ row.debater.name }}</td><td>{{ row.debater.society|default:'-' }}</td><td>{{ row.speaker_points }}</td></tr>{% endfor %}</tbody></table></div>
+<section class="hero compact"><p class="eyebrow">Resultados oficiais</p><h1>{{ setting.tournament_name }}</h1></section>
+<div class="grid two">{% for result in champions %}<div class="card orange"><span class="tag">{{ result.round.get_kind_display }}</span><h2>{{ result.temporary_pair.names }}</h2><p>Campeões</p></div>{% endfor %}</div>
+<div class="grid two"><section class="card"><h2>Finalistas Open</h2>{% for d in open_finalists %}<p>{{ d.name }}</p>{% endfor %}</section><section class="card"><h2>Finalistas novice</h2>{% for d in novice_finalists %}<p>{{ d.name }}</p>{% endfor %}</section></div>
+<h2>Tab preliminar final</h2>
+<div class="table-wrap"><table><thead><tr><th>#</th><th>Debatedor</th><th>TP</th><th>Força do draw</th><th>Speaker</th></tr></thead><tbody>{% for row in rows %}<tr><td>{{ row.rank }}</td><td>{{ row.debater.name }}</td><td>{{ row.team_points }}</td><td>{{ row.draw_strength }}</td><td>{{ row.speaker_points }}</td></tr>{% endfor %}</tbody></table></div>
+<h2>Tab de speakers</h2>
+<div class="table-wrap"><table><thead><tr><th>#</th><th>Debatedor</th><th>Sociedade</th><th>Pontos de speaker</th></tr></thead><tbody>{% for row in speaker_rows %}<tr><td>{{ row.speaker_rank }}</td><td>{{ row.debater.name }}</td><td>{{ row.debater.society|default:'-' }}</td><td>{{ row.speaker_points }}</td></tr>{% endfor %}</tbody></table></div>
 {% endblock %}

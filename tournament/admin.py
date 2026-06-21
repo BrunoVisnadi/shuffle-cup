@@ -40,4 +40,4 @@ admin.site.register(DebaterPartnerConflict)
 admin.site.register(JudgeDebaterConflict)
 admin.site.register(BreakChoice)
 admin.site.register(SiteSettings)
-admin.site.site_header = "Shuffle Cup Administration"
+admin.site.site_header = "Administração da Shuffle Cup"

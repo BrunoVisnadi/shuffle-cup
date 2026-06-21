@@ -1,10 +1,13 @@
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
+from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.urls import reverse
 
 from .models import (
-    BreakChoice, Debater, DebaterPartnerConflict, PairResult, ParticipantSlot, Room, Round,
+    BreakChoice, Debater, DebaterPartnerConflict, Judge, JudgeAllocation,
+    JudgeDebaterConflict, PairResult, ParticipantSlot, Room, Round, Society,
     SpeakerScore, TemporaryPair,
 )
 from .services import (
@@ -197,3 +200,41 @@ class BreakTests(TournamentTestCase):
         self.assertIn(selected, novice_break)
         self.assertEqual(len(open_break), 16)
         self.assertEqual(len(novice_break), 8)
+
+
+class JudgeAllocationTests(TournamentTestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="tab", password="secret")
+        self.client.force_login(self.user)
+        self.society = Society.objects.create(name="Sociedade A")
+        self.debaters = self.make_debaters(16)
+        self.debaters[0].society = self.society
+        self.debaters[0].save(update_fields=["society"])
+        self.round = self.make_round()
+        generate_prelim_draw(self.round)
+        self.judge = Judge.objects.create(name="Juíza Teste", society=self.society)
+        JudgeDebaterConflict.objects.create(judge=self.judge, debater=self.debaters[0])
+
+    def test_page_exposes_societies_and_conflicts_for_live_warnings(self):
+        response = self.client.get(reverse("allocate_judges", args=[self.round.id]), secure=True)
+        self.assertContains(response, "Sociedade A")
+        self.assertContains(response, "Juíza Teste")
+        self.assertContains(response, str(self.debaters[0].id))
+        self.assertContains(response, "Os avisos não impedem a alocação")
+
+    def test_duplicate_and_conflicted_allocation_is_allowed(self):
+        rooms = list(self.round.rooms.all())
+        response = self.client.post(reverse("allocate_judges", args=[self.round.id]), {
+            f"room-{rooms[0].id}-chair": self.judge.id,
+            f"room-{rooms[1].id}-chair": self.judge.id,
+        }, secure=True)
+        self.assertRedirects(response, reverse("allocate_judges", args=[self.round.id]), fetch_redirect_response=False)
+        self.assertEqual(JudgeAllocation.objects.filter(judge=self.judge).count(), 2)
+
+
+class AuthenticationTests(TestCase):
+    def test_home_has_login_and_login_redirects_to_manage(self):
+        self.assertContains(self.client.get(reverse("home"), secure=True), reverse("login"))
+        get_user_model().objects.create_user(username="tab", password="secret")
+        response = self.client.post(reverse("login"), {"username": "tab", "password": "secret"}, secure=True)
+        self.assertRedirects(response, reverse("dashboard"), fetch_redirect_response=False)

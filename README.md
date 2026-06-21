@@ -13,15 +13,15 @@ python manage.py createsuperuser
 python manage.py runserver
 ```
 
-Open `http://127.0.0.1:8000/admin/` to sign in, then use `http://127.0.0.1:8000/manage/` for tournament operations. Click **Create standard rounds**, import the CSV files, and generate Round 1.
+Open `http://127.0.0.1:8000/`, click **Login**, and sign in. You will be redirected to `/manage/` for tournament operations.
 
 CSV imports validate and show a preview before committing. Required headers are:
 
 ```text
 Debaters: name,email,society,is_novice
 Judges: name,email,society
-Partner conflicts: debater_1_email,debater_2_email,reason
-Judge conflicts: judge_email,debater_email,reason
+Partner conflicts: debater_1_email,debater_2_email
+Judge conflicts: judge_email,debater_email
 ```
 
 Conflict imports can alternatively include `debater_1_name`, `debater_2_name`, `judge_name`, or `debater_name` for exact-name lookup when the corresponding email is blank.

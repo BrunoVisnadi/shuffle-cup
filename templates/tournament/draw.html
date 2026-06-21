@@ -1,10 +1,10 @@
 {% extends 'base.html' %}
-{% block title %}{{ round.name }} Draw{% endblock %}
+{% block title %}Draw - {{ round.name }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><p class="eyebrow">Published Draw</p><h1>{{ round.name }}</h1></div></div>
+<div class="page-head"><div><p class="eyebrow">Draw publicado</p><h1>{{ round.name }}</h1></div></div>
 {% for room in rooms %}
 <section class="card room">
-  <div class="room-head"><h2>{{ room.name }}</h2><div>{% for allocation in room.judge_allocations.all %}<span class="judge">{{ allocation.get_role_display }}: {{ allocation.judge.name }}</span>{% endfor %}</div></div>
+  <div class="room-head"><h2>{{ room.name }}</h2><div>{% for allocation in room.judge_allocations.all %}<span class="judge">{{ allocation.get_role_display }}: {{ allocation.judge.name }}{% if allocation.judge.society %} ({{ allocation.judge.society }}){% endif %}</span>{% endfor %}</div></div>
   <div class="pair-grid">
   {% for pair in room.pairs.all %}
     <div class="pair"><span class="position">{{ pair.position }}</span><div>{% for slot in pair.slots.all %}<strong>{{ slot.display_name }}</strong>{% if slot.is_swing %} <span class="swing">SWING</span>{% elif slot.society_name %}<small>{{ slot.society_name }}</small>{% endif %}{% if not forloop.last %}<span class="amp"> + </span>{% endif %}{% endfor %}</div></div>

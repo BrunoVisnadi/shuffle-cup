@@ -1,6 +1,6 @@
 {% load static %}
 <!doctype html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -11,14 +11,14 @@
   <header class="topbar">
     <a class="brand" href="{% url 'home' %}"><span>SHUFFLE</span> CUP</a>
     <nav>
-      <a href="{% url 'public_standings' %}">Standings</a>
-      {% if user.is_authenticated %}<a href="{% url 'dashboard' %}">Manage</a><a href="/admin/">Admin</a>{% endif %}
+      <a href="{% url 'public_standings' %}">Classificação</a>
+      {% if user.is_authenticated %}<a href="{% url 'dashboard' %}">Organização</a><form method="post" action="{% url 'logout' %}" class="nav-form">{% csrf_token %}<button>Encerrar sessão</button></form>{% else %}<a href="{% url 'login' %}">Login</a>{% endif %}
     </nav>
   </header>
   <main class="container">
     {% for message in messages %}<div class="alert {{ message.tags }}">{{ message }}</div>{% endfor %}
     {% block content %}{% endblock %}
   </main>
-  <footer>Shuffle Cup Tabulation</footer>
+  <footer>Tabulação da Shuffle Cup</footer>
 </body>
 </html>

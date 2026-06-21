@@ -1,15 +1,15 @@
 {% extends 'base.html' %}
 {% block content %}
 <section class="hero">
-  <p class="eyebrow">British Parliamentary Debate</p>
+  <p class="eyebrow">Debate Parlamentar Britânico</p>
   <h1>{{ setting.tournament_name }}</h1>
-  {% if setting.current_round %}<p class="lead">Current round: <strong>{{ setting.current_round.name }}</strong></p>{% endif %}
+  {% if setting.current_round %}<p class="lead">Rodada atual: <strong>{{ setting.current_round.name }}</strong></p>{% endif %}
 </section>
 <div class="grid three">
   {% for round in rounds %}
-    <a class="card action-card" href="{% url 'public_draw' round.id %}"><span class="tag">DRAW</span><h2>{{ round.name }}</h2><p>Rooms, pairings and adjudicators</p></a>
-  {% empty %}<div class="card"><h2>Draw coming soon</h2><p>Published rounds will appear here.</p></div>{% endfor %}
-  <a class="card action-card" href="{% url 'public_standings' %}"><span class="tag">TAB</span><h2>Standings</h2></a>
-  {% if setting.final_tab_published %}<a class="card action-card orange" href="{% url 'final_results' %}"><span class="tag">FINAL</span><h2>Results</h2></a>{% endif %}
+    <a class="card action-card" href="{% url 'public_draw' round.id %}"><span class="tag">DRAW</span><h2>{{ round.name }}</h2><p>Salas, duplas e adjudicação</p></a>
+  {% empty %}<div class="card"><h2>Draw em breve</h2><p>As rodadas publicadas aparecerão aqui.</p></div>{% endfor %}
+  <a class="card action-card" href="{% url 'public_standings' %}"><span class="tag">TAB</span><h2>Classificação</h2></a>
+  {% if setting.final_tab_published %}<a class="card action-card orange" href="{% url 'final_results' %}"><span class="tag">FINAL</span><h2>Resultados</h2></a>{% endif %}
 </div>
 {% endblock %}

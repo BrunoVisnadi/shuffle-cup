@@ -4,7 +4,7 @@ from .models import BreakChoice, Judge
 
 
 class CSVUploadForm(forms.Form):
-    file = forms.FileField(help_text="UTF-8 CSV with the required header row.")
+    file = forms.FileField(label="Arquivo", help_text="CSV em UTF-8 com a linha de cabeçalhos obrigatórios.")
 
 
 class BallotIdentityForm(forms.Form):
@@ -18,12 +18,25 @@ class BreakChoiceForm(forms.ModelForm):
         fields = ["choice"]
 
 
+class JudgeChoiceField(forms.ModelChoiceField):
+    def label_from_instance(self, judge):
+        return f"{judge.name} - {judge.society or 'Sem sociedade'}"
+
+
+class JudgeMultipleChoiceField(forms.ModelMultipleChoiceField):
+    def label_from_instance(self, judge):
+        return f"{judge.name} - {judge.society or 'Sem sociedade'}"
+
+
 class JudgeAllocationForm(forms.Form):
-    chair = forms.ModelChoiceField(queryset=Judge.objects.none(), required=False)
-    panels = forms.ModelMultipleChoiceField(queryset=Judge.objects.none(), required=False)
+    chair = JudgeChoiceField(queryset=Judge.objects.none(), required=False, label="Chair")
+    panels = JudgeMultipleChoiceField(
+        queryset=Judge.objects.none(), required=False, label="Panel",
+        widget=forms.CheckboxSelectMultiple,
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        queryset = Judge.objects.filter(active=True)
+        queryset = Judge.objects.filter(active=True).select_related("society")
         self.fields["chair"].queryset = queryset
         self.fields["panels"].queryset = queryset

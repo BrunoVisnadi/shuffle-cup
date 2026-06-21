@@ -77,7 +77,7 @@ def _candidate_pairs(real_ids, swing_ids, conflicts, history, societies):
         if best is None or score < best[0]:
             best = (score, pairs)
     if best is None:
-        raise ValidationError("No valid pairing exists. Check imported partnership conflicts.")
+        raise ValidationError("Não existe uma formação de duplas válida. Revise os impedimentos importados.")
     return best[1]
 
 
@@ -138,10 +138,10 @@ def standings(round_limit=None, public=False):
 @transaction.atomic
 def generate_prelim_draw(round_obj):
     if round_obj.kind != Round.PRELIM:
-        raise ValidationError("This generator is for preliminary rounds only.")
+        raise ValidationError("Este gerador serve apenas para rodadas preliminares.")
     active = list(Debater.objects.filter(active=True).select_related("society"))
     if not active:
-        raise ValidationError("There are no active debaters.")
+        raise ValidationError("Não há debatedores ativos.")
     room_count = math.ceil(len(active) / 8)
     swing_count = room_count * 8 - len(active)
     prior = {row["debater"].id: row["team_points"] for row in standings(round_limit=round_obj.number - 1)}
@@ -150,7 +150,7 @@ def generate_prelim_draw(round_obj):
         active.sort(key=lambda d: -prior.get(d.id, 0))
 
     round_obj.rooms.all().delete()
-    rooms = [Room.objects.create(round=round_obj, name=f"Room {i}", ordinal=i) for i in range(1, room_count + 1)]
+    rooms = [Room.objects.create(round=round_obj, name=f"Sala {i}", ordinal=i) for i in range(1, room_count + 1)]
     swings = [SwingSlot.objects.create(round=round_obj, display_name=f"Swing {i + 1}", room=rooms[-1]) for i in range(swing_count)]
     room_reals = []
     cursor = 0
@@ -183,26 +183,26 @@ def draw_warnings(round_obj):
     counts = Counter(slot.debater_id for slot in slots if slot.debater_id)
     expected = set(Debater.objects.filter(active=True).values_list("id", flat=True)) if round_obj.kind == Round.PRELIM else set(counts)
     if set(counts) != expected or any(count != 1 for count in counts.values()):
-        hard.append("A real debater is missing or appears more than once.")
+        hard.append("Um debatedor está ausente ou aparece mais de uma vez.")
     conflicts = _conflict_keys()
     history = _partner_history(exclude_round=round_obj)
     for pair in round_obj.pairs.prefetch_related("slots__debater__society"):
         pair_slots = list(pair.slots.all())
         if len(pair_slots) != 2:
-            hard.append(f"{pair} does not have exactly two participants.")
+            hard.append(f"{pair} não tem exatamente dois participantes.")
             continue
         real_ids = [s.debater_id for s in pair_slots if s.debater_id]
         if len(real_ids) == 2:
             key = frozenset(real_ids)
             if key in conflicts:
-                hard.append(f"{pair.names} have an imported partner conflict.")
+                hard.append(f"{pair.names} têm um impedimento de dupla importado.")
             if history[key]:
-                warnings.append(f"Repeated partnership: {pair.names}.")
+                warnings.append(f"Dupla repetida: {pair.names}.")
             if pair_slots[0].debater.society_id and pair_slots[0].debater.society_id == pair_slots[1].debater.society_id:
-                warnings.append(f"Same-society partnership: {pair.names}.")
+                warnings.append(f"Dupla da mesma sociedade: {pair.names}.")
     lowest = round_obj.rooms.order_by("-ordinal").first()
     if ParticipantSlot.objects.filter(pair__round=round_obj, swing__isnull=False).exclude(pair__room=lowest).exists():
-        hard.append("A swing is outside the lowest room.")
+        hard.append("Há um swing fora da sala mais baixa.")
     return hard, warnings
 
 
@@ -213,7 +213,7 @@ def submit_prelim(room, values):
     for pair in pairs:
         totals[pair.id] = sum(Decimal(str(values[slot.id])) for slot in pair.slots.all())
     if len(set(totals.values())) != 4:
-        raise ValidationError("Pair totals must be distinct; tied pair totals are invalid.")
+        raise ValidationError("Os totais das duplas devem ser distintos; empates não são válidos.")
     ordered = sorted(totals, key=totals.get, reverse=True)
     for rank, pair_id in enumerate(ordered, 1):
         pair = next(p for p in pairs if p.id == pair_id)
@@ -226,10 +226,10 @@ def submit_prelim(room, values):
 def submit_elimination(room, selected_ids):
     expected = 2 if room.round.kind == Round.OPEN_SEMI else 1
     if len(selected_ids) != expected:
-        raise ValidationError(f"Select exactly {expected} pair(s).")
+        raise ValidationError(f"Selecione exatamente {expected} dupla(s).")
     valid = set(room.pairs.values_list("id", flat=True))
     if not set(selected_ids) <= valid:
-        raise ValidationError("Invalid pair selection.")
+        raise ValidationError("Seleção de duplas inválida.")
     for pair in room.pairs.all():
         PairResult.objects.update_or_create(temporary_pair=pair, defaults={"round": room.round, "room": room, "advances": room.round.kind == Round.OPEN_SEMI and pair.id in selected_ids, "champion": room.round.kind != Round.OPEN_SEMI and pair.id in selected_ids, "submitted": True, "confirmed": False})
 
@@ -238,11 +238,11 @@ def submit_elimination(room, selected_ids):
 def confirm_room(room):
     results = room.pairs.select_related("result")
     if any(not hasattr(pair, "result") or not pair.result.submitted for pair in results):
-        raise ValidationError("This room does not have a complete submitted ballot.")
+        raise ValidationError("Esta sala não tem um ballot completo enviado.")
     if room.round.kind == Round.PRELIM:
         totals = [sum(s.speaker_score.speaker_points for s in pair.slots.all()) for pair in results]
         if len(set(totals)) != 4:
-            raise ValidationError("Tied pair totals cannot be confirmed.")
+            raise ValidationError("Totais empatados não podem ser confirmados.")
         SpeakerScore.objects.filter(room=room).update(confirmed=True)
     PairResult.objects.filter(room=room).update(confirmed=True)
     if not PairResult.objects.filter(round=room.round, confirmed=False).exists():
@@ -271,14 +271,14 @@ def break_lists():
 @transaction.atomic
 def generate_outround(round_obj, debaters):
     if len(debaters) % 8:
-        raise ValidationError("Outround participant count must be divisible by eight.")
+        raise ValidationError("O número de participantes na eliminatória deve ser divisível por oito.")
     round_obj.rooms.all().delete()
     conflicts, history = _conflict_keys(), _partner_history(exclude_round=round_obj)
     societies = {d.id: d.society_id for d in debaters}
     position_history = _position_history(exclude_round=round_obj)
     chunks = [debaters[i:i + 8] for i in range(0, len(debaters), 8)]
     for index, chunk in enumerate(chunks, 1):
-        room = Room.objects.create(round=round_obj, name=f"Room {index}", ordinal=index)
+        room = Room.objects.create(round=round_obj, name=f"Sala {index}", ordinal=index)
         pairs = _candidate_pairs([d.id for d in chunk], [], conflicts, history, societies)
         for participants, position in _assign_positions(pairs, position_history):
             pair = TemporaryPair.objects.create(round=round_obj, room=room, position=position)
