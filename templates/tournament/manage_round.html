@@ -2,6 +2,23 @@
 {% block content %}
 <div class="page-head"><div><p class="eyebrow">Controle da rodada</p><h1>{{ round.name }}</h1></div><a class="button secondary" href="{% url 'allocate_judges' round.id %}">Alocar juízes</a></div>
 <div class="button-row"><form method="post" action="{% url 'generate_draw' round.id %}">{% csrf_token %}<button class="button">{% if rooms %}Gerar draw novamente{% else %}Gerar draw{% endif %}</button></form><form method="post" action="{% url 'publish_draw' round.id %}">{% csrf_token %}<button class="button orange-button">Publicar draw</button></form>{% if round.draw_published %}<a class="button secondary" href="{% url 'public_draw' round.id %}">Ver draw público</a>{% endif %}</div>
+{% if round.kind == 'prelim' %}
+<section class="card">
+  <h2>Indisponíveis nesta rodada</h2>
+  <p class="lead">Marque debatedores que não devem entrar no draw desta rodada. Eles seguem ativos para as próximas rodadas.</p>
+  <form method="post" action="{% url 'update_round_availability' round.id %}">
+    {% csrf_token %}
+    <div class="availability-list">
+      {% for debater in debaters %}
+      <label><input type="checkbox" name="unavailable" value="{{ debater.id }}" {% if debater.id in unavailable_ids %}checked{% endif %}> <span>{{ debater.name }}</span><small>{{ debater.society|default:'Sem sociedade' }}</small></label>
+      {% empty %}
+      <p>Nenhum debatedor ativo cadastrado.</p>
+      {% endfor %}
+    </div>
+    <button class="button secondary">Salvar indisponíveis</button>
+  </form>
+</section>
+{% endif %}
 {% if hard %}<div class="alert error"><strong>Publicação bloqueada</strong>{% for warning in hard %}<div>{{ warning }}</div>{% endfor %}</div>{% endif %}
 {% if warnings %}<div class="alert warning"><strong>Revise os avisos</strong>{% for warning in warnings %}<div>{{ warning }}</div>{% endfor %}</div>{% endif %}
 {% for room in rooms %}<section class="card room">

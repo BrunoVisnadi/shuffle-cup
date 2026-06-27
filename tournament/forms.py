@@ -1,6 +1,6 @@
 from django import forms
 
-from .models import BreakChoice, Judge
+from .models import Judge
 
 
 class CSVUploadForm(forms.Form):
@@ -10,12 +10,6 @@ class CSVUploadForm(forms.Form):
 class BallotIdentityForm(forms.Form):
     submitted_by_name = forms.CharField(max_length=200)
     submitted_by_email = forms.EmailField(required=False)
-
-
-class BreakChoiceForm(forms.ModelForm):
-    class Meta:
-        model = BreakChoice
-        fields = ["choice"]
 
 
 class JudgeChoiceField(forms.ModelChoiceField):

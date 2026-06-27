@@ -13,6 +13,7 @@ urlpatterns = [
     path("manage/setup/", views.setup_rounds, name="setup_rounds"),
     path("manage/import/<str:kind>/", views.csv_import, name="csv_import"),
     path("manage/round/<int:round_id>/", views.manage_round, name="manage_round"),
+    path("manage/round/<int:round_id>/availability/", views.update_round_availability, name="update_round_availability"),
     path("manage/round/<int:round_id>/generate/", views.generate_draw, name="generate_draw"),
     path("manage/round/<int:round_id>/publish/", views.publish_draw, name="publish_draw"),
     path("manage/round/<int:round_id>/judges/", views.allocate_judges, name="allocate_judges"),

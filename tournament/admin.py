@@ -1,16 +1,16 @@
 from django.contrib import admin
 
 from .models import (
-    BreakChoice, Debater, DebaterPartnerConflict, Judge,
+    Debater, DebaterPartnerConflict, Judge,
     JudgeAllocation, JudgeDebaterConflict, PairResult, ParticipantSlot, Room,
-    Round, SiteSettings, Society, SpeakerScore, SwingSlot, TemporaryPair,
+    Round, RoundUnavailableDebater, SiteSettings, Society, SpeakerScore, SwingSlot, TemporaryPair,
 )
 
 
 @admin.register(Debater)
 class DebaterAdmin(admin.ModelAdmin):
-    list_display = ("name", "email", "society", "is_novice", "active")
-    list_filter = ("active", "is_novice", "society")
+    list_display = ("name", "email", "society", "active")
+    list_filter = ("active", "society")
     search_fields = ("name", "email")
 
 
@@ -37,6 +37,6 @@ admin.site.register(PairResult)
 admin.site.register(JudgeAllocation)
 admin.site.register(DebaterPartnerConflict)
 admin.site.register(JudgeDebaterConflict)
-admin.site.register(BreakChoice)
+admin.site.register(RoundUnavailableDebater)
 admin.site.register(SiteSettings)
 admin.site.site_header = "Administração da Shuffle Cup"

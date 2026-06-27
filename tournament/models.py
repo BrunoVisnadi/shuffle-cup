@@ -49,8 +49,7 @@ class Round(models.Model):
     PRELIM = "prelim"
     OPEN_SEMI = "open_semifinal"
     OPEN_FINAL = "open_final"
-    NOVICE_FINAL = "novice_final"
-    KINDS = [(PRELIM, "Preliminar"), (OPEN_SEMI, "Semifinal Open"), (OPEN_FINAL, "Final Open"), (NOVICE_FINAL, "Final novice")]
+    KINDS = [(PRELIM, "Preliminar"), (OPEN_SEMI, "Semifinal Open"), (OPEN_FINAL, "Final")]
 
     name = models.CharField(max_length=100)
     number = models.PositiveSmallIntegerField()
@@ -195,10 +194,16 @@ class JudgeDebaterConflict(models.Model):
         unique_together = [("judge", "debater")]
 
 
-class BreakChoice(models.Model):
-    CHOICES = [("open", "Semifinais Open"), ("novice", "Final novice")]
-    debater = models.OneToOneField(Debater, related_name="break_choice", on_delete=models.CASCADE)
-    choice = models.CharField(max_length=10, choices=CHOICES)
+class RoundUnavailableDebater(models.Model):
+    round = models.ForeignKey(Round, related_name="unavailable_debaters", on_delete=models.CASCADE)
+    debater = models.ForeignKey(Debater, related_name="round_unavailabilities", on_delete=models.CASCADE)
+
+    class Meta:
+        unique_together = [("round", "debater")]
+        ordering = ["debater__name"]
+
+    def __str__(self):
+        return f"{self.debater} indisponivel em {self.round}"
 
 
 class SiteSettings(models.Model):

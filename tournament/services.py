@@ -7,12 +7,14 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 
 from .models import (
-    BreakChoice, Debater, DebaterPartnerConflict, PairResult, ParticipantSlot,
-    POSITIONS, Room, Round, SpeakerScore, SwingSlot, TemporaryPair,
+    Debater, DebaterPartnerConflict, PairResult, ParticipantSlot,
+    POSITIONS, Room, Round, RoundUnavailableDebater, SpeakerScore, SwingSlot, TemporaryPair,
 )
 
 
 POSITION_NAMES = [p[0] for p in POSITIONS]
+PRELIM_ROUND_COUNT = 4
+PUBLIC_PRELIM_ROUND_COUNT = 2
 
 
 def _conflict_keys():
@@ -139,7 +141,8 @@ def standings(round_limit=None, public=False):
 def generate_prelim_draw(round_obj):
     if round_obj.kind != Round.PRELIM:
         raise ValidationError("Este gerador serve apenas para rodadas preliminares.")
-    active = list(Debater.objects.filter(active=True).select_related("society"))
+    unavailable_ids = RoundUnavailableDebater.objects.filter(round=round_obj).values_list("debater_id", flat=True)
+    active = list(Debater.objects.filter(active=True).exclude(id__in=unavailable_ids).select_related("society"))
     if not active:
         raise ValidationError("Não há debatedores ativos.")
     room_count = math.ceil(len(active) / 8)
@@ -181,7 +184,11 @@ def draw_warnings(round_obj):
     warnings, hard = [], []
     slots = list(ParticipantSlot.objects.filter(pair__round=round_obj).select_related("pair", "pair__room", "debater__society"))
     counts = Counter(slot.debater_id for slot in slots if slot.debater_id)
-    expected = set(Debater.objects.filter(active=True).values_list("id", flat=True)) if round_obj.kind == Round.PRELIM else set(counts)
+    if round_obj.kind == Round.PRELIM:
+        unavailable_ids = RoundUnavailableDebater.objects.filter(round=round_obj).values_list("debater_id", flat=True)
+        expected = set(Debater.objects.filter(active=True).exclude(id__in=unavailable_ids).values_list("id", flat=True))
+    else:
+        expected = set(counts)
     if set(counts) != expected or any(count != 1 for count in counts.values()):
         hard.append("Um debatedor está ausente ou aparece mais de uma vez.")
     conflicts = _conflict_keys()
@@ -258,21 +265,8 @@ def confirm_room(room):
 
 
 def break_lists():
-    ranked = standings(round_limit=5)
-    open_candidates = [row["debater"] for row in ranked[:16]]
-    open_ids = set()
-    for debater in open_candidates:
-        choice = getattr(debater, "break_choice", None)
-        if not debater.is_novice or not choice or choice.choice == "open":
-            open_ids.add(debater.id)
-    for row in ranked:
-        if len(open_ids) >= 16:
-            break
-        if row["debater"].id not in open_ids and (not row["debater"].is_novice or getattr(row["debater"], "break_choice", None) is None or row["debater"].break_choice.choice == "open"):
-            open_ids.add(row["debater"].id)
-    open_break = [row["debater"] for row in ranked if row["debater"].id in open_ids][:16]
-    novice_break = [row["debater"] for row in ranked if row["debater"].is_novice and row["debater"].id not in open_ids][:8]
-    return open_break, novice_break
+    ranked = [row["debater"] for row in standings(round_limit=PRELIM_ROUND_COUNT)]
+    return ranked[:16]
 
 
 @transaction.atomic

@@ -6,9 +6,9 @@ from django.test import TestCase
 from django.urls import reverse
 
 from .models import (
-    BreakChoice, Debater, DebaterPartnerConflict, Judge, JudgeAllocation,
+    Debater, DebaterPartnerConflict, Judge, JudgeAllocation,
     JudgeDebaterConflict, PairResult, ParticipantSlot, Room, Round, SiteSettings, Society,
-    SpeakerScore, TemporaryPair,
+    RoundUnavailableDebater, SpeakerScore, TemporaryPair,
 )
 from .services import (
     break_lists, confirm_room, draw_warnings, generate_prelim_draw, standings,
@@ -18,7 +18,7 @@ from .services import (
 
 class TournamentTestCase(TestCase):
     def make_debaters(self, count, society=None):
-        return [Debater.objects.create(name=f"Debater {i:02}", email=f"d{i}@example.com", society=society, is_novice=i < 8) for i in range(count)]
+        return [Debater.objects.create(name=f"Debater {i:02}", email=f"d{i}@example.com", society=society) for i in range(count)]
 
     def make_round(self, number=1, kind=Round.PRELIM, silent=False):
         return Round.objects.create(name=f"Round {number}", number=number, kind=kind, silent=silent)
@@ -67,6 +67,23 @@ class DrawTests(TournamentTestCase):
         generate_prelim_draw(round_obj)
         self.assertEqual(ParticipantSlot.objects.filter(pair__round=round_obj, debater__isnull=False).count(), 8)
         self.assertEqual(set(ParticipantSlot.objects.filter(pair__round=round_obj).values_list("pair__position", flat=True)), {"OG", "OO", "CG", "CO"})
+
+    def test_round_unavailable_debater_is_skipped_only_for_that_round(self):
+        debaters = self.make_debaters(9)
+        first_round = self.make_round(1)
+        second_round = self.make_round(2)
+        RoundUnavailableDebater.objects.create(round=first_round, debater=debaters[0])
+
+        generate_prelim_draw(first_round)
+        first_slots = ParticipantSlot.objects.filter(pair__round=first_round)
+        self.assertNotIn(debaters[0].id, set(first_slots.values_list("debater_id", flat=True)))
+        self.assertEqual(first_slots.filter(debater__isnull=False).count(), 8)
+        hard, _ = draw_warnings(first_round)
+        self.assertFalse(hard)
+
+        generate_prelim_draw(second_round)
+        second_ids = set(ParticipantSlot.objects.filter(pair__round=second_round).values_list("debater_id", flat=True))
+        self.assertIn(debaters[0].id, second_ids)
 
 
 class ResultTests(TournamentTestCase):
@@ -136,7 +153,7 @@ class ResultTests(TournamentTestCase):
         self.assertEqual(SpeakerScore.objects.filter(participant_slot__swing__isnull=False, confirmed=True).count(), 1)
 
     def test_elimination_selection_counts(self):
-        semi = self.make_round(number=6, kind=Round.OPEN_SEMI)
+        semi = self.make_round(number=5, kind=Round.OPEN_SEMI)
         room = Room.objects.create(round=semi, name="Semi 1", ordinal=1)
         for position in ("OG", "OO", "CG", "CO"):
             pair = TemporaryPair.objects.create(round=semi, room=room, position=position)
@@ -201,10 +218,9 @@ class StandingsTests(TournamentTestCase):
 
 class BreakTests(TournamentTestCase):
     def setUp(self):
-        debaters = self.make_debaters(24)
-        Debater.objects.update(is_novice=True)
-        for number in range(1, 6):
-            round_obj = self.make_round(number, silent=number > 3)
+        self.make_debaters(24)
+        for number in range(1, 5):
+            round_obj = self.make_round(number, silent=number > 2)
             generate_prelim_draw(round_obj)
             for room in round_obj.rooms.all():
                 values = {}
@@ -214,20 +230,9 @@ class BreakTests(TournamentTestCase):
                 submit_prelim(room, values)
                 confirm_room(room)
 
-    def test_open_top_16_and_novice_top_8(self):
-        open_break, novice_break = break_lists()
-        self.assertEqual(len(open_break), 16)
-        self.assertEqual(len(novice_break), 8)
-        self.assertFalse(set(open_break) & set(novice_break))
-
-    def test_dual_eligible_novice_choice_moves_them_to_novice(self):
-        selected = standings(round_limit=5)[0]["debater"]
-        BreakChoice.objects.create(debater=selected, choice="novice")
-        open_break, novice_break = break_lists()
-        self.assertNotIn(selected, open_break)
-        self.assertIn(selected, novice_break)
-        self.assertEqual(len(open_break), 16)
-        self.assertEqual(len(novice_break), 8)
+    def test_top_16_break_to_open_semifinals(self):
+        semifinalists = break_lists()
+        self.assertEqual(len(semifinalists), 16)
 
 
 class JudgeAllocationTests(TournamentTestCase):
@@ -265,6 +270,19 @@ class JudgeAllocationTests(TournamentTestCase):
         }, secure=True)
         self.assertRedirects(response, reverse("allocate_judges", args=[self.round.id]), fetch_redirect_response=False)
         self.assertEqual(JudgeAllocation.objects.filter(judge=self.judge).count(), 1)
+
+    def test_manage_page_saves_round_unavailability_for_next_draw(self):
+        response = self.client.get(reverse("manage_round", args=[self.round.id]), secure=True)
+        self.assertContains(response, "Indisponíveis nesta rodada")
+
+        self.client.post(reverse("update_round_availability", args=[self.round.id]), {
+            "unavailable": [self.debaters[0].id],
+        }, secure=True)
+        self.assertTrue(RoundUnavailableDebater.objects.filter(round=self.round, debater=self.debaters[0]).exists())
+
+        self.client.post(reverse("generate_draw", args=[self.round.id]), secure=True)
+        drawn_ids = set(ParticipantSlot.objects.filter(pair__round=self.round).values_list("debater_id", flat=True))
+        self.assertNotIn(self.debaters[0].id, drawn_ids)
 
 
 class JudgePortalTests(TournamentTestCase):

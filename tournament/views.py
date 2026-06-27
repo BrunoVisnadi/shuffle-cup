@@ -14,13 +14,14 @@ from django.views.decorators.http import require_POST
 
 from .forms import CSVUploadForm, JudgeAllocationForm
 from .models import (
-    BreakChoice, Debater, DebaterPartnerConflict, Judge,
+    Debater, DebaterPartnerConflict, Judge,
     JudgeAllocation, JudgeDebaterConflict, PairResult, Room,
-    Round, SiteSettings, Society, SpeakerScore,
+    Round, RoundUnavailableDebater, SiteSettings, Society, SpeakerScore,
 )
 from .services import (
     break_lists, confirm_room, draw_warnings, generate_outround,
     generate_prelim_draw, standings, submit_elimination, submit_prelim,
+    PRELIM_ROUND_COUNT, PUBLIC_PRELIM_ROUND_COUNT,
 )
 
 
@@ -42,10 +43,14 @@ def public_draw(request, round_id):
 
 def public_standings(request):
     tournament_ended = _setting().final_tab_published
-    completed = Round.objects.filter(kind=Round.PRELIM, results_confirmed=True, number__lte=5 if tournament_ended else 3).order_by("-number").first()
+    completed = Round.objects.filter(
+        kind=Round.PRELIM,
+        results_confirmed=True,
+        number__lte=PRELIM_ROUND_COUNT if tournament_ended else PUBLIC_PRELIM_ROUND_COUNT,
+    ).order_by("-number").first()
     limit = completed.number if completed else 0
-    silent_active = not tournament_ended and Round.objects.filter(kind=Round.PRELIM, number__gt=3, results_confirmed=True).exists()
-    rows = standings(round_limit=limit, public=True)
+    silent_active = not tournament_ended and Round.objects.filter(kind=Round.PRELIM, number__gt=PUBLIC_PRELIM_ROUND_COUNT, results_confirmed=True).exists()
+    rows = standings(round_limit=limit, public=not tournament_ended)
     if not tournament_ended:
         rows.sort(key=lambda row: (-row["team_points"], row["debater"].name.lower()))
     return render(request, "tournament/standings.html", {
@@ -58,7 +63,7 @@ def round_results(request):
     tournament_ended = _setting().final_tab_published
     rounds = Round.objects.filter(results_confirmed=True, draw_published=True)
     if not tournament_ended:
-        rounds = rounds.filter(kind=Round.PRELIM, number__lte=3, silent=False)
+        rounds = rounds.filter(kind=Round.PRELIM, number__lte=PUBLIC_PRELIM_ROUND_COUNT, silent=False)
     rounds = rounds.prefetch_related(
         "rooms__pairs__slots__debater", "rooms__pairs__slots__swing",
         "rooms__pairs__slots__speaker_score", "rooms__pairs__result",
@@ -81,12 +86,11 @@ def final_results(request):
         raise Http404
     champions = PairResult.objects.filter(confirmed=True, champion=True).select_related("round", "temporary_pair").prefetch_related("temporary_pair__slots__debater")
     open_finalists = Debater.objects.filter(participant_slots__pair__round__kind=Round.OPEN_FINAL).distinct()
-    novice_finalists = Debater.objects.filter(participant_slots__pair__round__kind=Round.NOVICE_FINAL).distinct()
-    rows = standings(round_limit=5)
+    rows = standings(round_limit=PRELIM_ROUND_COUNT)
     speaker_rows = sorted(rows, key=lambda row: (-row["speaker_points"], row["debater"].name.lower()))
     for index, row in enumerate(speaker_rows, 1):
         row["speaker_rank"] = index
-    return render(request, "tournament/final_results.html", {"setting": setting, "champions": champions, "open_finalists": open_finalists, "novice_finalists": novice_finalists, "rows": rows, "speaker_rows": speaker_rows})
+    return render(request, "tournament/final_results.html", {"setting": setting, "champions": champions, "open_finalists": open_finalists, "rows": rows, "speaker_rows": speaker_rows})
 
 
 @login_required
@@ -102,10 +106,12 @@ def dashboard(request):
 def setup_rounds(request):
     specifications = [
         ("Rodada 1", 1, Round.PRELIM, False), ("Rodada 2", 2, Round.PRELIM, False),
-        ("Rodada 3", 3, Round.PRELIM, False), ("Rodada 4", 4, Round.PRELIM, True),
-        ("Rodada 5", 5, Round.PRELIM, True), ("Semifinais Open", 6, Round.OPEN_SEMI, False),
-        ("Final novice", 6, Round.NOVICE_FINAL, False), ("Final Open", 7, Round.OPEN_FINAL, False),
+        ("Rodada 3", 3, Round.PRELIM, True), ("Rodada 4", 4, Round.PRELIM, True),
+        ("Semifinais Open", 5, Round.OPEN_SEMI, False), ("Final", 6, Round.OPEN_FINAL, False),
     ]
+    Round.objects.filter(kind="pre_final").update(kind=Round.OPEN_SEMI, name="Semifinais Open", number=5, silent=False)
+    Round.objects.filter(kind="novice_final").delete()
+    Round.objects.filter(kind=Round.PRELIM, number__gt=PRELIM_ROUND_COUNT).delete()
     for name, number, kind, silent in specifications:
         Round.objects.update_or_create(number=number, kind=kind, defaults={"name": name, "silent": silent})
     messages.success(request, "As rodadas padrão estão prontas.")
@@ -129,7 +135,7 @@ def _find_person(model, email, name):
 
 def _validate_csv(kind, rows):
     required = {
-        "debaters": {"name", "email", "society", "is_novice"},
+        "debaters": {"name", "email", "society"},
         "judges": {"name", "email", "society"},
         "partner-conflicts": {"debater_1_email", "debater_2_email"},
         "judge-conflicts": {"judge_email", "debater_email"},
@@ -143,7 +149,7 @@ def _validate_csv(kind, rows):
         try:
             if kind in {"debaters", "judges"} and not row.get("name", "").strip():
                 raise ValueError("name é obrigatório")
-            if kind == "debaters":
+            if kind == "debaters" and row.get("is_novice"):
                 _bool(row.get("is_novice"))
             if kind == "partner-conflicts":
                 if not _find_person(Debater, row.get("debater_1_email"), row.get("debater_1_name", "")) or not _find_person(Debater, row.get("debater_2_email"), row.get("debater_2_name", "")):
@@ -165,7 +171,7 @@ def _commit_csv(kind, rows):
             instance = _find_person(model, row["email"], row["name"]) or model()
             instance.name, instance.email, instance.society = row["name"].strip(), row["email"].strip() or None, society
             if kind == "debaters":
-                instance.is_novice = _bool(row["is_novice"])
+                instance.is_novice = _bool(row["is_novice"]) if row.get("is_novice") else False
             instance.save()
         elif kind == "partner-conflicts":
             first = _find_person(Debater, row["debater_1_email"], row.get("debater_1_name", ""))
@@ -224,7 +230,36 @@ def manage_round(request, round_id):
         room.result_submitted = bool(results) and all(result.submitted for result in results)
         room.chair = next((allocation.judge for allocation in room.judge_allocations.all() if allocation.role == "chair"), None)
         room.panel = [allocation.judge for allocation in room.judge_allocations.all() if allocation.role == "panel"]
-    return render(request, "tournament/manage_round.html", {"round": round_obj, "rooms": rooms, "hard": hard, "warnings": warnings})
+    debaters = Debater.objects.filter(active=True).select_related("society")
+    unavailable_ids = list(RoundUnavailableDebater.objects.filter(round=round_obj).values_list("debater_id", flat=True))
+    return render(request, "tournament/manage_round.html", {
+        "round": round_obj, "rooms": rooms, "hard": hard, "warnings": warnings,
+        "debaters": debaters, "unavailable_ids": unavailable_ids,
+    })
+
+
+@login_required
+@require_POST
+def update_round_availability(request, round_id):
+    round_obj = get_object_or_404(Round, pk=round_id)
+    if round_obj.kind != Round.PRELIM:
+        messages.error(request, "Indisponibilidade por rodada so se aplica as rodadas preliminares.")
+        return redirect("manage_round", round_id=round_id)
+    if PairResult.objects.filter(round=round_obj, submitted=True).exists():
+        messages.error(request, "Nao e possivel alterar indisponibilidades depois que resultados foram enviados.")
+        return redirect("manage_round", round_id=round_id)
+    selected = set(Debater.objects.filter(active=True, id__in=request.POST.getlist("unavailable")).values_list("id", flat=True))
+    with transaction.atomic():
+        RoundUnavailableDebater.objects.filter(round=round_obj).exclude(debater_id__in=selected).delete()
+        existing = set(RoundUnavailableDebater.objects.filter(round=round_obj, debater_id__in=selected).values_list("debater_id", flat=True))
+        RoundUnavailableDebater.objects.bulk_create(
+            [RoundUnavailableDebater(round=round_obj, debater_id=debater_id) for debater_id in selected - existing]
+        )
+    if round_obj.rooms.exists():
+        messages.warning(request, "Indisponibilidades salvas. Gere o draw novamente para aplicar a mudanca.")
+    else:
+        messages.success(request, "Indisponibilidades salvas.")
+    return redirect("manage_round", round_id=round_id)
 
 
 @login_required
@@ -237,18 +272,22 @@ def generate_draw(request, round_id):
         if round_obj.kind == Round.PRELIM:
             generate_prelim_draw(round_obj)
         else:
-            if Round.objects.filter(kind=Round.PRELIM, number__lte=5, results_confirmed=True).count() < 5:
-                raise ValidationError("Confirme as cinco rodadas preliminares antes de gerar as eliminatórias.")
-            open_break, novice_break = break_lists()
+            if Round.objects.filter(kind=Round.PRELIM, number__lte=PRELIM_ROUND_COUNT, results_confirmed=True).count() < PRELIM_ROUND_COUNT:
+                raise ValidationError("Confirme as quatro rodadas preliminares antes de gerar as eliminatorias.")
+            semifinalists = break_lists()
             if round_obj.kind == Round.OPEN_SEMI:
-                if len(open_break) < 16:
-                    raise ValidationError("Há menos de 16 semifinalistas Open disponíveis.")
+                if len(semifinalists) < 16:
+                    raise ValidationError("Ha menos de 16 debatedores elegiveis para o break.")
                 pattern = [0, 3, 4, 7, 8, 11, 12, 15, 1, 2, 5, 6, 9, 10, 13, 14]
-                generate_outround(round_obj, [open_break[i] for i in pattern])
-            elif round_obj.kind == Round.NOVICE_FINAL:
-                generate_outround(round_obj, novice_break)
+                generate_outround(round_obj, [semifinalists[i] for i in pattern])
             else:
-                advancing = list(Debater.objects.filter(participant_slots__pair__result__advances=True, participant_slots__pair__result__confirmed=True).distinct())
+                advancing = list(Debater.objects.filter(
+                    participant_slots__pair__round__kind=Round.OPEN_SEMI,
+                    participant_slots__pair__result__advances=True,
+                    participant_slots__pair__result__confirmed=True,
+                ).distinct())
+                if len(advancing) != 8:
+                    raise ValidationError("Confirme as quatro duplas classificadas nas semifinais antes de gerar a final.")
                 generate_outround(round_obj, advancing)
         round_obj.draw_published = False
         round_obj.save(update_fields=["draw_published"])
@@ -432,29 +471,21 @@ def confirm_result(request, room_id):
 
 @login_required
 def admin_standings(request):
-    return render(request, "tournament/standings.html", {"rows": standings(round_limit=5), "public": False, "show_full": True})
+    return render(request, "tournament/standings.html", {"rows": standings(round_limit=PRELIM_ROUND_COUNT), "public": False, "show_full": True})
 
 
 @login_required
 def manage_break(request):
-    open_break, novice_break = break_lists()
-    overlap = [row["debater"] for row in standings(round_limit=5)[:16] if row["debater"].is_novice]
-    if request.method == "POST":
-        for debater in overlap:
-            value = request.POST.get(f"choice_{debater.id}")
-            if value in {"open", "novice"}:
-                BreakChoice.objects.update_or_create(debater=debater, defaults={"choice": value})
-        messages.success(request, "Escolhas de break salvas.")
-        return redirect("manage_break")
-    return render(request, "tournament/break.html", {"open_break": open_break, "novice_break": novice_break, "overlap": overlap})
+    semifinalists = break_lists()
+    return render(request, "tournament/break.html", {"semifinalists": semifinalists})
 
 
 @login_required
 @require_POST
 def publish_final(request):
     champion_kinds = set(PairResult.objects.filter(confirmed=True, champion=True).values_list("round__kind", flat=True))
-    if not {Round.OPEN_FINAL, Round.NOVICE_FINAL} <= champion_kinds:
-        messages.error(request, "Confirme os resultados dos campeões das duas finais antes de encerrar o torneio.")
+    if Round.OPEN_FINAL not in champion_kinds:
+        messages.error(request, "Confirme o resultado da final antes de encerrar o torneio.")
         return redirect("dashboard")
     setting = _setting()
     setting.final_tab_published = True
