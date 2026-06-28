@@ -14,7 +14,7 @@ from .models import (
 
 POSITION_NAMES = [p[0] for p in POSITIONS]
 PRELIM_ROUND_COUNT = 4
-PUBLIC_PRELIM_ROUND_COUNT = 2
+PUBLIC_PRELIM_ROUND_COUNT = 4
 
 
 def _conflict_keys():

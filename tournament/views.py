@@ -336,8 +336,8 @@ def allocate_judges(request, round_id):
                 messages.error(request, "Um juiz não pode ser alocado mais de uma vez na mesma rodada.")
             else:
                 with transaction.atomic():
+                    JudgeAllocation.objects.filter(round=round_obj).delete()
                     for room, form in submitted_forms:
-                        room.judge_allocations.all().delete()
                         chair = form.cleaned_data["chair"]
                         if chair:
                             JudgeAllocation.objects.create(round=round_obj, room=room, judge=chair, role="chair")

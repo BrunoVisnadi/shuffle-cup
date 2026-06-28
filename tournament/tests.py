@@ -271,6 +271,27 @@ class JudgeAllocationTests(TournamentTestCase):
         self.assertRedirects(response, reverse("allocate_judges", args=[self.round.id]), fetch_redirect_response=False)
         self.assertEqual(JudgeAllocation.objects.filter(judge=self.judge).count(), 1)
 
+    def test_judge_can_be_moved_between_rooms_without_unique_constraint_error(self):
+        rooms = list(self.round.rooms.all())
+        JudgeAllocation.objects.create(round=self.round, room=rooms[1], judge=self.judge, role="chair")
+
+        response = self.client.post(reverse("allocate_judges", args=[self.round.id]), {
+            f"room-{rooms[0].id}-chair": self.judge.id,
+        }, secure=True)
+
+        self.assertRedirects(response, reverse("allocate_judges", args=[self.round.id]), fetch_redirect_response=False)
+        allocation = JudgeAllocation.objects.get(judge=self.judge)
+        self.assertEqual(allocation.room, rooms[0])
+
+    def test_judge_can_be_removed_without_unique_constraint_error(self):
+        rooms = list(self.round.rooms.all())
+        JudgeAllocation.objects.create(round=self.round, room=rooms[0], judge=self.judge, role="chair")
+
+        response = self.client.post(reverse("allocate_judges", args=[self.round.id]), {}, secure=True)
+
+        self.assertRedirects(response, reverse("allocate_judges", args=[self.round.id]), fetch_redirect_response=False)
+        self.assertFalse(JudgeAllocation.objects.filter(judge=self.judge).exists())
+
     def test_manage_page_saves_round_unavailability_for_next_draw(self):
         response = self.client.get(reverse("manage_round", args=[self.round.id]), secure=True)
         self.assertContains(response, "Indisponíveis nesta rodada")
