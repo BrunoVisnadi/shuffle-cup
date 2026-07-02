@@ -7,6 +7,7 @@ urlpatterns = [
     path("draw/<int:round_id>/", views.public_draw, name="public_draw"),
     path("standings/", views.public_standings, name="public_standings"),
     path("resultados/", views.round_results, name="round_results"),
+    path("speakers/", views.public_speaker_points, name="public_speaker_points"),
     path("results/", views.final_results, name="final_results"),
     path("juiz/<str:token>/", views.judge_portal, name="judge_portal"),
     path("manage/", views.dashboard, name="dashboard"),

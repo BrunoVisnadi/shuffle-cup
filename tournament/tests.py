@@ -437,6 +437,45 @@ class RoundPublicationTests(TournamentTestCase):
         self.assertContains(response, self.closed_round.name)
 
 
+class SpeakerPointsPublicationTests(TournamentTestCase):
+    def setUp(self):
+        self.make_debaters(8)
+        self.round = self.make_round(1)
+        generate_prelim_draw(self.round)
+        room = self.round.rooms.get()
+        values = {}
+        for index, pair in enumerate(room.pairs.prefetch_related("slots")):
+            for slot in pair.slots.all():
+                values[slot.id] = Decimal("70.00") + Decimal(index) + (Decimal(slot.order) / Decimal("100"))
+        submit_prelim(room, values)
+        confirm_room(room)
+        self.score = SpeakerScore.objects.filter(confirmed=True).select_related(
+            "participant_slot__debater",
+            "participant_slot__swing",
+        ).first()
+
+    def test_speaker_points_tab_is_hidden_until_tournament_ends(self):
+        response = self.client.get(reverse("home"), secure=True)
+        self.assertNotContains(response, reverse("public_speaker_points"))
+
+        response = self.client.get(reverse("public_speaker_points"), secure=True)
+        self.assertRedirects(response, reverse("home"), fetch_redirect_response=False)
+
+    def test_speaker_points_tab_shows_individual_scores_after_tournament_ends(self):
+        setting = SiteSettings.load()
+        setting.final_tab_published = True
+        setting.save()
+
+        response = self.client.get(reverse("home"), secure=True)
+        self.assertContains(response, reverse("public_speaker_points"))
+
+        response = self.client.get(reverse("public_speaker_points"), secure=True)
+        self.assertContains(response, "Speaker points individuais")
+        self.assertContains(response, self.round.name)
+        self.assertContains(response, self.score.participant_slot.display_name)
+        self.assertContains(response, str(self.score.speaker_points).replace(".", ","))
+
+
 class AuthenticationTests(TestCase):
     def test_home_has_login_and_login_redirects_to_manage(self):
         self.assertContains(self.client.get(reverse("home"), secure=True), reverse("login"))

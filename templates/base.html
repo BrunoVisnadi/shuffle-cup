@@ -13,6 +13,7 @@
     <nav>
       <a href="{% url 'public_standings' %}">Classificação</a>
       <a href="{% url 'round_results' %}">Resultados</a>
+      {% if public_setting.final_tab_published %}<a href="{% url 'public_speaker_points' %}">Speakers</a>{% endif %}
       {% if user.is_authenticated %}<a href="{% url 'dashboard' %}">Organização</a><form method="post" action="{% url 'logout' %}" class="nav-form">{% csrf_token %}<button>Encerrar sessão</button></form>{% else %}<a href="{% url 'login' %}">Login</a>{% endif %}
     </nav>
   </header>

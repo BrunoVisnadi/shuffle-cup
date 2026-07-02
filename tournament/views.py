@@ -71,6 +71,44 @@ def round_results(request):
     return render(request, "tournament/round_results.html", {"rounds": rounds, "admin_view": False})
 
 
+def public_speaker_points(request):
+    setting = _setting()
+    if not setting.final_tab_published:
+        return redirect("home")
+    rounds = list(Round.objects.filter(kind=Round.PRELIM, results_confirmed=True).order_by("number"))
+    scores = SpeakerScore.objects.filter(
+        confirmed=True,
+        round__in=rounds,
+    ).select_related(
+        "round",
+        "participant_slot__debater__society",
+        "participant_slot__swing",
+    )
+    rows = {}
+    for score in scores:
+        slot = score.participant_slot
+        if slot.debater_id:
+            key = ("debater", slot.debater_id)
+            name = slot.debater.name
+            society = slot.debater.society.name if slot.debater.society_id else ""
+        else:
+            key = ("swing", slot.swing_id)
+            name = slot.swing.display_name
+            society = "Swing"
+        row = rows.setdefault(key, {"name": name, "society": society, "scores": {}, "total": 0})
+        row["scores"][score.round_id] = score.speaker_points
+        row["total"] += score.speaker_points
+    speaker_rows = sorted(rows.values(), key=lambda row: (-row["total"], row["name"].lower()))
+    for index, row in enumerate(speaker_rows, 1):
+        row["rank"] = index
+        row["cells"] = [row["scores"].get(round_obj.id) for round_obj in rounds]
+    return render(request, "tournament/speaker_points.html", {
+        "rounds": rounds,
+        "speaker_rows": speaker_rows,
+        "setting": setting,
+    })
+
+
 @login_required
 def admin_round_results(request):
     rounds = Round.objects.filter(rooms__pairs__result__submitted=True).distinct().prefetch_related(

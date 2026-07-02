@@ -11,6 +11,6 @@
   {% empty %}<div class="card"><h2>Draw em breve</h2><p>As rodadas publicadas aparecerão aqui.</p></div>{% endfor %}
   <a class="card action-card" href="{% url 'public_standings' %}"><span class="tag">TAB</span><h2>Classificação</h2></a>
   <a class="card action-card" href="{% url 'round_results' %}"><span class="tag">RESULTADOS</span><h2>Resultados por rodada</h2></a>
-  {% if setting.final_tab_published %}<a class="card action-card orange" href="{% url 'final_results' %}"><span class="tag">FINAL</span><h2>Resultados</h2></a>{% endif %}
+  {% if setting.final_tab_published %}<a class="card action-card orange" href="{% url 'final_results' %}"><span class="tag">FINAL</span><h2>Resultados</h2></a><a class="card action-card" href="{% url 'public_speaker_points' %}"><span class="tag">SPEAKERS</span><h2>Speaker points</h2></a>{% endif %}
 </div>
 {% endblock %}

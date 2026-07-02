@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}Speaker points{% endblock %}
+{% block content %}
+<div class="page-head"><div><p class="eyebrow">Tab publico</p><h1>Speaker points individuais</h1></div></div>
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Participante</th>
+        <th>Sociedade</th>
+        {% for round in rounds %}<th>{{ round.name }}</th>{% endfor %}
+        <th>Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in speaker_rows %}
+        <tr>
+          <td class="rank">{{ row.rank }}</td>
+          <td><strong>{{ row.name }}</strong></td>
+          <td>{{ row.society|default:'-' }}</td>
+          {% for score in row.cells %}<td>{{ score|default:'-' }}</td>{% endfor %}
+          <td>{{ row.total }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="8">Ainda nao ha speaker points confirmados.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
